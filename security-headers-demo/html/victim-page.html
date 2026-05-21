@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>BankDemo — Transfer Funds</title>
+  <style>
+    body { font-family:sans-serif; background:#f0f0f0; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+    .box { background:#fff; padding:2rem; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,0.15); text-align:center; }
+    h2 { color:#c0392b; margin-bottom:1rem; }
+    p { color:#444; font-size:0.9rem; margin-bottom:1.2rem; }
+    button {
+      padding:0.8rem 2rem; background:#e74c3c; color:#fff;
+      border:none; border-radius:6px; font-size:1rem; cursor:pointer; font-weight:700;
+    }
+    button:hover { background:#c0392b; }
+  </style>
+</head>
+<body>
+<div class="box">
+  <h2>⚠️ BankDemo — Transfer Funds</h2>
+  <p>This is the <strong>real target page</strong> loaded inside a hidden iframe.<br>
+  The attacker's overlay is positioned so that the "Win a Prize!" button sits<br>
+  directly on top of the red button below.</p>
+  <button onclick="alert('Transfer of $1000 confirmed! (demo)')">Confirm Transfer — $1,000</button>
+</div>
+</body>
+</html>

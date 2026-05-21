@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Referrer Leak — Missing Referrer-Policy</title>
+  <style>
+    :root { --dark:#1a1a2e; --card:#16213e; --red:#e74c3c; --green:#27ae60; --text:#eaeaea; --muted:#8899aa; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--dark); color:var(--text); line-height:1.6; }
+    header { background:linear-gradient(135deg,#3a2a00,#8a6200); padding:2rem; border-bottom:3px solid #f39c12; }
+    header h1 { font-size:1.8rem; }
+    header .sub { color:#fff3cc; font-size:0.9rem; margin-top:0.3rem; }
+    nav { padding:0.7rem 2rem; background:#0f1f3a; font-size:0.85rem; }
+    nav a { color:#aac4ff; text-decoration:none; }
+    main { max-width:860px; margin:2rem auto; padding:0 1.5rem; display:flex; flex-direction:column; gap:2rem; }
+    .panel { background:var(--card); border:1px solid #2a3a5c; border-radius:10px; padding:1.5rem; }
+    .panel.attack { border-left:4px solid var(--red); }
+    .panel.fix    { border-left:4px solid var(--green); }
+    .panel h2 { font-size:1.1rem; margin-bottom:1rem; }
+    .panel.attack h2 { color:var(--red); }
+    .panel.fix h2    { color:var(--green); }
+    p { font-size:0.92rem; color:var(--muted); margin-bottom:0.8rem; }
+    code, pre { font-family:'Fira Code',monospace; font-size:0.85rem; background:#0f1f3a; color:#82c4f8; }
+    pre { padding:1rem; border-radius:6px; overflow-x:auto; border:1px solid #1e3a5a; margin:0.8rem 0; }
+    code { padding:0.1rem 0.4rem; border-radius:3px; }
+    ol,ul { padding-left:1.5rem; }
+    ol li, ul li { font-size:0.88rem; color:var(--muted); margin-bottom:0.5rem; }
+    .step-num { display:inline-block; background:var(--red); color:#fff; width:1.4rem; height:1.4rem; border-radius:50%; text-align:center; line-height:1.4rem; font-size:0.75rem; font-weight:700; margin-right:0.5rem; }
+    .header-block { background:#0b1629; border:1px solid var(--green); border-radius:6px; padding:1rem; font-family:monospace; font-size:0.85rem; color:#82f8a4; margin:0.8rem 0; }
+    .demo-area { background:#0b1629; border:1px dashed #4a6fa5; border-radius:6px; padding:1rem; margin-top:1rem; }
+    .demo-link { display:inline-block; margin-top:0.5rem; padding:0.4rem 1rem; background:#e67e22; border-radius:4px; color:#fff; text-decoration:none; font-size:0.85rem; }
+    .demo-link:hover { background:#d35400; }
+    .url-example { background:#0f1629; border:1px solid #2a3a5c; border-radius:6px; padding:0.8rem; font-family:monospace; font-size:0.82rem; color:#ff9966; margin:0.5rem 0; word-break:break-all; }
+    .policy-table { width:100%; border-collapse:collapse; margin:0.8rem 0; font-size:0.82rem; }
+    .policy-table th { background:#0b1629; color:#aac4ff; padding:0.5rem 0.7rem; text-align:left; border:1px solid #2a3a5c; }
+    .policy-table td { padding:0.5rem 0.7rem; border:1px solid #2a3a5c; color:var(--muted); }
+    .policy-table tr:nth-child(even) td { background:#101e36; }
+    .good { color:#27ae60 !important; }
+    .bad  { color:#e74c3c !important; }
+    footer { text-align:center; margin:2rem 0 1rem; color:var(--muted); font-size:0.8rem; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🔗 Referrer Information Leak</h1>
+  <div class="sub">Missing header: <code style="background:rgba(0,0,0,0.3);padding:0.1rem 0.4rem;border-radius:3px">Referrer-Policy</code></div>
+</header>
+<nav><a href="index.html">← Back to all demos</a></nav>
+
+<main>
+
+  <div class="panel">
+    <h2>📖 What is the Referer Header?</h2>
+    <p>When you click a link or load a resource, the browser includes a <code>Referer</code> request header containing the URL of the page you came from. (Note: "Referer" is a historical misspelling of "Referrer" — it stuck.)</p>
+    <p>Modern URLs often carry sensitive data in query strings:</p>
+    <div class="url-example">https://app.example.com/reset-password?token=eyJhbGciOiJIUzI1NiJ9.abc123</div>
+    <div class="url-example">https://shop.example.com/checkout?promo=SECRET50&amp;user=12345</div>
+    <div class="url-example">https://portal.example.com/patients?id=98765&amp;ssn=123-45-6789</div>
+    <p>Without a <code>Referrer-Policy</code> header, all of this leaks to every third-party resource the page loads (analytics, CDN scripts, embedded images, ad networks).</p>
+  </div>
+
+  <div class="panel attack">
+    <h2>🔴 The Attack — Token and Session Leakage</h2>
+    <ol>
+      <li><span class="step-num">1</span>User receives a password-reset email with a link:<br>
+        <code>https://app.example.com/reset?token=abc123secret</code>
+      </li>
+      <li><span class="step-num">2</span>User visits the link. The page loads a Google Analytics script, a CDN-hosted font, and an ad pixel — all third-party.</li>
+      <li><span class="step-num">3</span>Each of those requests includes:<br>
+        <code>Referer: https://app.example.com/reset?token=abc123secret</code>
+      </li>
+      <li><span class="step-num">4</span>The third-party servers (and anyone who can read their logs or intercept the traffic) now have the password-reset token.</li>
+      <li><span class="step-num">5</span>Attacker uses the token to reset the victim's password before they finish the flow.</li>
+    </ol>
+
+    <p style="margin-top:0.8rem"><strong>Real-world examples of this class of vulnerability:</strong></p>
+    <ul>
+      <li>OAuth authorization codes leaked via <code>Referer</code> to third-party iframes.</li>
+      <li>API keys in URL parameters exposed to analytics platforms.</li>
+      <li>Medical record IDs leaked from patient portals to ad networks.</li>
+      <li>CSRF tokens visible to third parties, reducing their effectiveness.</li>
+    </ul>
+
+    <div class="demo-area">
+      <p><strong>See it live:</strong> open DevTools → Network tab, then click the link below. Inspect the outbound request to the "third-party" resource and look at its <strong>Request Headers → Referer</strong> field.</p>
+      <a class="demo-link" href="referrer-target.html?token=super-secret-token-123&amp;user=victim@example.com">
+        Click me (simulated sensitive link)
+      </a>
+      <p style="margin-top:0.5rem;font-size:0.8rem">The destination page loads an image from the same server — in a real scenario that would be a third-party origin.</p>
+    </div>
+  </div>
+
+  <div class="panel fix">
+    <h2>✅ The Fix — Referrer-Policy</h2>
+    <p>The <code>Referrer-Policy</code> header controls how much of the URL is included in the <code>Referer</code> header for outbound requests.</p>
+    <p>Recommended safe policy:</p>
+    <div class="header-block">Referrer-Policy: strict-origin-when-cross-origin</div>
+    <p>This sends the full URL only on same-origin requests (useful for your own analytics), and only the origin (no path or query string) for cross-origin requests.</p>
+
+    <p>Policy comparison:</p>
+    <table class="policy-table">
+      <tr><th>Policy</th><th>Same-origin sends</th><th>Cross-origin sends</th><th>Safe?</th></tr>
+      <tr>
+        <td><code>no-referrer</code></td>
+        <td>nothing</td><td>nothing</td>
+        <td class="good">✓ safest</td>
+      </tr>
+      <tr>
+        <td><code>strict-origin-when-cross-origin</code></td>
+        <td>full URL</td><td>origin only</td>
+        <td class="good">✓ recommended</td>
+      </tr>
+      <tr>
+        <td><code>same-origin</code></td>
+        <td>full URL</td><td>nothing</td>
+        <td class="good">✓ good</td>
+      </tr>
+      <tr>
+        <td><code>origin-when-cross-origin</code></td>
+        <td>full URL</td><td>origin only (even on HTTP→HTTP)</td>
+        <td class="good">✓ acceptable</td>
+      </tr>
+      <tr>
+        <td><code>unsafe-url</code></td>
+        <td>full URL</td><td>full URL</td>
+        <td class="bad">✗ dangerous</td>
+      </tr>
+      <tr>
+        <td><em>(no header — browser default)</em></td>
+        <td>full URL</td><td>full URL (usually)</td>
+        <td class="bad">✗ this site's current state</td>
+      </tr>
+    </table>
+
+    <p>In Nginx:</p>
+    <pre>add_header Referrer-Policy "strict-origin-when-cross-origin" always;</pre>
+    <p>You can also set it per-page with an HTML meta tag (no server access needed):</p>
+    <pre>&lt;meta name="referrer" content="strict-origin-when-cross-origin"&gt;</pre>
+  </div>
+
+</main>
+<footer>Educational demo — do not use in production.</footer>
+</body>
+</html>
