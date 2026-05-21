@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Certificates — mTLS Demo{% endblock %}
+
+{% block head %}
+<style>
+  main{max-width:960px;margin:2rem auto;padding:0 1.5rem;display:flex;flex-direction:column;gap:1.5rem}
+  .chain{display:flex;flex-direction:column;align-items:center;gap:0;background:#010409;border:1px solid var(--border);border-radius:10px;padding:1.5rem}
+  .chain-node{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:1rem 1.5rem;min-width:260px;text-align:center}
+  .chain-node h3{font-size:.9rem;margin-bottom:.2rem}
+  .chain-node p{font-size:.75rem;color:var(--muted);margin:0}
+  .chain-arrow{width:2px;height:32px;background:var(--border);position:relative;display:flex;align-items:flex-end;justify-content:center}
+  .chain-arrow::after{content:'▼';color:var(--border);font-size:.7rem;margin-bottom:-4px}
+  .chain-label{font-size:.68rem;color:var(--muted);position:absolute;right:8px;top:50%;transform:translateY(-50%);white-space:nowrap}
+  .cert-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.2rem}
+  .cert-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.2rem;display:flex;flex-direction:column;gap:.8rem}
+  .cert-card.ca    {border-top:3px solid var(--orange)}
+  .cert-card.server{border-top:3px solid var(--blue)}
+  .cert-card.client{border-top:3px solid var(--green)}
+  .cert-title{display:flex;align-items:center;gap:.5rem;font-weight:700;font-size:.9rem}
+  .cert-field{display:flex;flex-direction:column;gap:.05rem}
+  .cert-field .fl{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .cert-field .fv{font-size:.78rem;font-family:monospace;color:var(--text);word-break:break-all}
+  .cert-field .fv.ok{color:var(--green)}
+  .cert-field .fv.warn{color:var(--orange)}
+  hr{border:none;border-top:1px solid var(--border);margin:.2rem 0}
+  .validity-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:.3rem}
+  .validity-fill{height:100%;border-radius:2px;background:var(--green);transition:width .5s}
+  .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;margin:2rem auto;display:block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .pill-list{display:flex;flex-wrap:wrap;gap:.3rem}
+  .pill{padding:.1rem .4rem;background:#21262d;border-radius:3px;font-size:.7rem;font-family:monospace;color:var(--text)}
+</style>
+{% endblock %}
+
+{% block content %}
+<main>
+  <div class="card blue">
+    <h2>🪪 X.509 Certificate Viewer</h2>
+    <p>Three certificates form the mTLS trust chain. The same Root CA signs both the server and client certificates, so each side can verify the other.</p>
+  </div>
+
+  <!-- Trust chain diagram -->
+  <div>
+    <h2 style="margin-bottom:.8rem;font-size:1rem;color:var(--muted)">Trust Chain</h2>
+    <div class="chain" id="chain-diagram">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- Certificate detail cards -->
+  <h2 style="font-size:1rem;color:var(--muted)">Certificate Details</h2>
+  <div class="cert-cards" id="cert-cards">
+    <div style="grid-column:1/-1;color:var(--muted);font-size:.85rem;padding:1rem">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- How Nginx verifies -->
+  <div class="card">
+    <h2>⚙️ How Nginx Verifies the Client Certificate</h2>
+    <pre># nginx.conf relevant directives
+ssl_client_certificate /etc/nginx/certs/ca/ca.crt;  # trust anchor
+ssl_verify_client      on;                            # require client cert
+ssl_verify_depth       2;                             # max chain depth
+
+# After handshake, these variables are populated:
+$ssl_client_verify     # → SUCCESS | FAILED | NONE
+$ssl_client_s_dn       # → CN=demo-client,O=mTLS Demo,...
+$ssl_client_i_dn       # → CN=mTLS Demo Root CA,...
+$ssl_client_serial     # → hex serial number
+$ssl_client_fingerprint # → SHA1 fingerprint</pre>
+    <p>Nginx performs the full X.509 certificate chain validation: signature check → expiry check → CA trust check → key usage check. Only on SUCCESS does it proceed to route the request.</p>
+  </div>
+
+  <!-- Certificate lifecycle -->
+  <div class="card">
+    <h2>📅 Certificate Lifecycle &amp; Rotation</h2>
+    <ul>
+      <li>The <strong>Root CA</strong> cert is valid 10 years. Its private key should be stored offline (HSM or air-gapped) and used only to sign new certs.</li>
+      <li>The <strong>Server cert</strong> is valid 1 year. Nginx reloads it with <code>nginx -s reload</code> — no downtime. Automate with certbot or internal PKI tooling.</li>
+      <li>The <strong>Client cert</strong> is valid 1 year. To revoke a client, add its serial to a CRL (<code>ssl_crl</code>) or use OCSP stapling (<code>ssl_stapling</code>).</li>
+      <li>Certificate rotation in mTLS does NOT require changing application code — the TLS layer handles it transparently.</li>
+    </ul>
+  </div>
+</main>
+
+<script>
+function fv(val, cls='') {
+  return `<div class="fv ${cls}">${val ?? '<span style="color:var(--muted)">—</span>'}</div>`;
+}
+
+function daysColor(days) {
+  if (days > 90) return 'var(--green)';
+  if (days > 30) return 'var(--orange)';
+  return 'var(--red)';
+}
+
+function validityPct(notBefore, notAfter) {
+  const start = new Date(notBefore).getTime();
+  const end   = new Date(notAfter).getTime();
+  const now   = Date.now();
+  return Math.max(0, Math.min(100, ((end - now) / (end - start)) * 100));
+}
+
+function buildCard(type, label, emoji, data) {
+  const d = data.days_remaining;
+  const color = daysColor(d);
+  const pct   = validityPct(data.not_before, data.not_after);
+  const isCA  = data.is_ca;
+
+  return `<div class="cert-card ${type}">
+    <div class="cert-title">${emoji} ${label} ${isCA?'<span class="tag orange" style="margin-left:auto">Root CA</span>':''}</div>
+    <hr>
+    <div class="cert-field"><div class="fl">Common Name</div>${fv(data.subject?.CN,'ok')}</div>
+    <div class="cert-field"><div class="fl">Organization</div>${fv(data.subject?.O)}</div>
+    ${data.subject?.emailAddress?`<div class="cert-field"><div class="fl">Email</div>${fv(data.subject.emailAddress)}</div>`:''}
+    <div class="cert-field"><div class="fl">Issuer</div>${fv(data.issuer?.CN)}</div>
+    <hr>
+    <div class="cert-field"><div class="fl">Serial Number</div>${fv(data.serial)}</div>
+    <div class="cert-field"><div class="fl">Version / Algorithm</div>${fv(`${data.version} / ${data.sig_algorithm}`)}</div>
+    <hr>
+    <div class="cert-field">
+      <div class="fl">Valid Until (${d} days left)</div>
+      ${fv(data.not_after, d>30?'ok':'warn')}
+      <div class="validity-bar"><div class="validity-fill" style="width:${pct}%;background:${color}"></div></div>
+    </div>
+    ${data.sans?.length?`<div class="cert-field"><div class="fl">Subject Alternative Names</div><div class="pill-list">${data.sans.map(s=>`<span class="pill">${s}</span>`).join('')}</div></div>`:''}
+    ${data.key_usage?.length?`<div class="cert-field"><div class="fl">Key Usage</div><div class="pill-list">${data.key_usage.map(u=>`<span class="pill">${u}</span>`).join('')}</div></div>`:''}
+    ${data.ext_key_usage?.length?`<div class="cert-field"><div class="fl">Extended Key Usage</div><div class="pill-list">${data.ext_key_usage.map(u=>`<span class="pill" style="color:var(--blue)">${u}</span>`).join('')}</div></div>`:''}
+  </div>`;
+}
+
+function buildChain(ca, server, client) {
+  const chain = document.getElementById('chain-diagram');
+  chain.innerHTML = `
+    <div style="display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap;justify-content:center">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:.5rem">
+        <div class="chain-node" style="border-color:var(--orange);border-top:3px solid var(--orange)">
+          <h3 style="color:var(--orange)">🏛️ Root CA</h3>
+          <p>${ca?.subject?.CN || '—'}</p>
+          <p style="margin-top:.2rem;font-size:.65rem">Self-signed · Valid 10 years</p>
+        </div>
+        <div style="display:flex;gap:3rem">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:.3rem">
+            <div class="chain-arrow"><span class="chain-label">signs</span></div>
+            <div class="chain-node" style="border-color:var(--blue);border-top:3px solid var(--blue);min-width:180px">
+              <h3 style="color:var(--blue)">🖥️ Server Cert</h3>
+              <p>${server?.subject?.CN || '—'}</p>
+              <p style="margin-top:.2rem;font-size:.65rem">extKeyUsage=serverAuth</p>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:.3rem">
+            <div class="chain-arrow"><span class="chain-label">signs</span></div>
+            <div class="chain-node" style="border-color:var(--green);border-top:3px solid var(--green);min-width:180px">
+              <h3 style="color:var(--green)">🖥️ Client Cert</h3>
+              <p>${client?.subject?.CN || '—'}</p>
+              <p style="margin-top:.2rem;font-size:.65rem">extKeyUsage=clientAuth</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p style="margin-top:1.2rem;font-size:.75rem;color:var(--muted);text-align:center">
+      Server verifies client cert ← signed by CA it trusts &nbsp;|&nbsp; Client verifies server cert ← signed by same CA
+    </p>`;
+}
+
+fetch('/api/cert-details')
+  .then(r => r.json())
+  .then(d => {
+    buildChain(d.ca, d.server, d.client);
+    const cards = document.getElementById('cert-cards');
+    cards.innerHTML = '';
+    if (d.ca)     cards.innerHTML += buildCard('ca',     'Root CA Certificate',     '🏛️', d.ca);
+    if (d.server) cards.innerHTML += buildCard('server', 'Server Certificate',      '📦', d.server);
+    if (d.client) cards.innerHTML += buildCard('client', 'Client Certificate',      '🖥️', d.client);
+  })
+  .catch(e => {
+    document.getElementById('cert-cards').innerHTML =
+      `<div style="color:var(--red);padding:1rem">Failed to load cert details: ${e.message}</div>`;
+    document.getElementById('chain-diagram').innerHTML =
+      `<div style="color:var(--red);padding:1rem">Failed to load chain</div>`;
+  });
+</script>
+{% endblock %}

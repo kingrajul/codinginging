@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}mTLS Demo{% endblock %}</title>
+  <style>
+    :root{
+      --bg:#0d1117; --card:#161b22; --border:#30363d;
+      --text:#e6edf3; --muted:#8b949e;
+      --blue:#58a6ff; --green:#3fb950; --red:#f85149;
+      --orange:#d29922; --purple:#bc8cff;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+    /* ── Nav ── */
+    nav{background:#010409;border-bottom:1px solid var(--border);padding:.6rem 1.5rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap}
+    nav .brand{font-weight:700;color:var(--blue);font-size:.95rem;text-decoration:none;margin-right:.5rem}
+    nav a{color:var(--muted);text-decoration:none;font-size:.85rem;padding:.3rem .5rem;border-radius:4px;transition:color .15s,background .15s}
+    nav a:hover,nav a.active{color:var(--text);background:#21262d}
+    /* ── Shared components ── */
+    .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem}
+    .card.blue  {border-left:4px solid var(--blue)}
+    .card.green {border-left:4px solid var(--green)}
+    .card.red   {border-left:4px solid var(--red)}
+    .card.orange{border-left:4px solid var(--orange)}
+    .card.purple{border-left:4px solid var(--purple)}
+    h1{font-size:1.6rem}
+    h2{font-size:1.05rem;margin-bottom:.8rem}
+    h3{font-size:.95rem;margin-bottom:.5rem;color:var(--blue)}
+    p{font-size:.88rem;color:var(--muted);margin-bottom:.6rem}
+    p:last-child{margin-bottom:0}
+    code{font-family:'Fira Code',monospace;font-size:.8rem;background:#0b1629;color:#82c4f8;padding:.1rem .4rem;border-radius:3px}
+    pre{font-family:'Fira Code',monospace;font-size:.78rem;background:#010409;color:#82c4f8;padding:1rem;border-radius:6px;overflow-x:auto;border:1px solid var(--border);margin:.6rem 0;white-space:pre-wrap;word-break:break-word}
+    .btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1.1rem;border:none;border-radius:6px;font-size:.85rem;font-weight:600;cursor:pointer;transition:filter .15s}
+    .btn:hover{filter:brightness(.85)}
+    .btn.blue  {background:#1f6feb;color:#fff}
+    .btn.green {background:#238636;color:#fff}
+    .btn.red   {background:#da3633;color:#fff}
+    .btn.ghost {background:transparent;border:1px solid var(--border);color:var(--text)}
+    .tag{display:inline-block;padding:.15rem .5rem;border-radius:12px;font-size:.72rem;font-weight:600;letter-spacing:.3px}
+    .tag.green {background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+    .tag.red   {background:rgba(248,81,73,.15);color:var(--red);  border:1px solid rgba(248,81,73,.3)}
+    .tag.blue  {background:rgba(88,166,255,.15);color:var(--blue); border:1px solid rgba(88,166,255,.3)}
+    .tag.orange{background:rgba(210,153,34,.15);color:var(--orange);border:1px solid rgba(210,153,34,.3)}
+    .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    ul,ol{padding-left:1.4rem}
+    li{font-size:.87rem;color:var(--muted);margin-bottom:.35rem}
+    footer{text-align:center;padding:2rem 0 1rem;color:var(--muted);font-size:.78rem;border-top:1px solid var(--border);margin-top:3rem}
+    .kv{display:grid;grid-template-columns:auto 1fr;gap:.3rem .8rem;font-size:.82rem}
+    .kv .k{color:var(--muted);white-space:nowrap}
+    .kv .v{color:var(--text);word-break:break-all}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<nav>
+  <a class="brand" href="/">🔐 mTLS Demo</a>
+  <a href="/" {% if request.path=='/' %}class="active"{% endif %}>Dashboard</a>
+  <a href="/handshake" {% if request.path=='/handshake' %}class="active"{% endif %}>Handshake</a>
+  <a href="/test"      {% if request.path=='/test'      %}class="active"{% endif %}>Connection Test</a>
+  <a href="/certs"     {% if request.path=='/certs'     %}class="active"{% endif %}>Certificates</a>
+  <a href="/openssl"   {% if request.path=='/openssl'   %}class="active"{% endif %}>OpenSSL Trace</a>
+  <span style="margin-left:auto;font-size:.75rem;color:var(--muted)">
+    Server → <a href="https://localhost:8443" target="_blank" style="color:var(--muted)">https://localhost:8443</a>
+  </span>
+</nav>
+
+{% block content %}{% endblock %}
+
+<footer>mTLS Demo — Educational use only &nbsp;|&nbsp; Server: https://localhost:8443 &nbsp;|&nbsp; Client UI: http://localhost:8888</footer>
+</body>
+</html>

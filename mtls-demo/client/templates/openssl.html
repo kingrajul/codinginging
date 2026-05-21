@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}OpenSSL Trace — mTLS Demo{% endblock %}
+
+{% block head %}
+<style>
+  main{max-width:960px;margin:2rem auto;padding:0 1.5rem;display:flex;flex-direction:column;gap:1.5rem}
+  .cmd-bar{background:#010409;border:1px solid var(--border);border-radius:8px;padding:1rem 1.2rem;font-family:monospace;font-size:.8rem;color:#82c4f8;overflow-x:auto;white-space:pre}
+  .output-wrap{position:relative}
+  .output{background:#010409;border:1px solid var(--border);border-radius:8px;padding:1rem 1.2rem;font-family:monospace;font-size:.75rem;min-height:180px;white-space:pre-wrap;word-break:break-word;overflow-y:auto;max-height:500px;line-height:1.5}
+  .output .line-ok   {color:#3fb950}
+  .output .line-err  {color:#f85149}
+  .output .line-info {color:#58a6ff}
+  .output .line-warn {color:#d29922}
+  .output .line-data {color:#8b949e}
+  .output .line-key  {color:#bc8cff}
+  .output .placeholder{color:var(--muted)}
+  .btn-row{display:flex;gap:.8rem;flex-wrap:wrap}
+  .annotation-table{width:100%;border-collapse:collapse;font-size:.8rem}
+  .annotation-table th{background:#010409;padding:.5rem .7rem;text-align:left;color:var(--muted);border-bottom:1px solid var(--border)}
+  .annotation-table td{padding:.45rem .7rem;border-bottom:1px solid #21262d;vertical-align:top}
+  .annotation-table td:first-child{font-family:monospace;color:#82c4f8;white-space:nowrap}
+  .annotation-table td:last-child{color:var(--muted)}
+  .spin{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+{% endblock %}
+
+{% block content %}
+<main>
+  <div class="card blue">
+    <h2>🔬 Raw OpenSSL TLS Trace</h2>
+    <p>Run <code>openssl s_client</code> from inside the client container and see the raw TLS state machine output. Compare the handshake with and without a client certificate.</p>
+  </div>
+
+  <!-- WITH cert trace -->
+  <div class="card green">
+    <h2 style="color:var(--green)">✅ Trace — With Client Certificate</h2>
+    <div class="cmd-bar">openssl s_client \
+  -connect mtls-server:443 \
+  -cert    /app/certs/client/client.crt \
+  -key     /app/certs/client/client.key \
+  -CAfile  /app/certs/ca/ca.crt \
+  -state   -brief -verify_return_error</div>
+    <div class="btn-row" style="margin-top:.8rem">
+      <button class="btn green" id="btn-with" onclick="runWithCert()">▶ Run</button>
+    </div>
+    <div class="output-wrap" style="margin-top:.8rem">
+      <div class="output" id="out-with"><span class="placeholder">Click Run to execute openssl s_client with client cert…</span></div>
+    </div>
+  </div>
+
+  <!-- WITHOUT cert trace -->
+  <div class="card red">
+    <h2 style="color:var(--red)">❌ Trace — Without Client Certificate</h2>
+    <div class="cmd-bar">openssl s_client \
+  -connect mtls-server:443 \
+  -CAfile  /app/certs/ca/ca.crt \
+  -state   -brief</div>
+    <div class="btn-row" style="margin-top:.8rem">
+      <button class="btn red" id="btn-without" onclick="runWithoutCert()">▶ Run</button>
+    </div>
+    <div class="output-wrap" style="margin-top:.8rem">
+      <div class="output" id="out-without"><span class="placeholder">Click Run to execute openssl s_client without client cert…</span></div>
+    </div>
+  </div>
+
+  <!-- openssl flag reference -->
+  <div class="card">
+    <h2>📖 Flag Reference</h2>
+    <table class="annotation-table">
+      <tr><th>Flag</th><th>Meaning</th></tr>
+      <tr><td>-connect host:port</td><td>Target server to connect to</td></tr>
+      <tr><td>-cert file.crt</td><td>Client certificate to present during mTLS handshake</td></tr>
+      <tr><td>-key file.key</td><td>Private key matching the client certificate</td></tr>
+      <tr><td>-CAfile ca.crt</td><td>CA certificate(s) to verify the server's certificate</td></tr>
+      <tr><td>-state</td><td>Print SSL state machine transitions (shows each handshake phase)</td></tr>
+      <tr><td>-brief</td><td>Print a compact summary of the connection (protocol, cipher, cert info)</td></tr>
+      <tr><td>-verify_return_error</td><td>Exit with error code if server cert verification fails</td></tr>
+    </table>
+  </div>
+
+  <!-- output line annotation -->
+  <div class="card">
+    <h2>📝 Reading the Output</h2>
+    <table class="annotation-table">
+      <tr><th>Output line</th><th>What it means</th></tr>
+      <tr><td>SSL_connect:before SSL initialization</td><td>TCP connected, about to send ClientHello</td></tr>
+      <tr><td>SSL_connect:SSLv3/TLS write client hello</td><td>ClientHello sent to server</td></tr>
+      <tr><td>SSL_connect:SSLv3/TLS read server hello</td><td>ServerHello received, cipher negotiated</td></tr>
+      <tr><td>SSL_connect:TLSv1.3 read encrypted extensions</td><td>Server's EncryptedExtensions received</td></tr>
+      <tr><td>SSL_connect:SSLv3/TLS read server certificate</td><td>Server cert received and being verified</td></tr>
+      <tr><td>SSL_connect:TLSv1.3 read server certificate verify</td><td>Server proved ownership of private key</td></tr>
+      <tr><td>SSL_connect:SSLv3/TLS read finished</td><td>Server Finished — server side complete</td></tr>
+      <tr><td>SSL_connect:SSLv3/TLS write client certificate</td><td>★ mTLS: client cert being sent to server</td></tr>
+      <tr><td>SSL_connect:SSLv3/TLS write certificate verify</td><td>★ mTLS: client proves it owns private key</td></tr>
+      <tr><td>SSL_connect:SSLv3/TLS write finished</td><td>Client Finished sent — handshake complete</td></tr>
+      <tr><td>Protocol version: TLSv1.3</td><td>Negotiated TLS version (from -brief)</td></tr>
+      <tr><td>Ciphersuite: TLS_AES_256_GCM_SHA384</td><td>Negotiated cipher suite</td></tr>
+      <tr><td>Peer certificate: CN = mtls-server</td><td>Server identity confirmed</td></tr>
+      <tr><td>Hash used: SHA256</td><td>Signature hash algorithm</td></tr>
+      <tr><td>139...error:...CERTIFICATE_REQUIRED</td><td>Server rejected connection — no client cert provided</td></tr>
+    </table>
+  </div>
+
+  <!-- manual curl command -->
+  <div class="card">
+    <h2>🖥️ Try It Yourself with curl</h2>
+    <p>From your Docker host machine (the certs are in the <code>mtls-demo/certs/</code> directory):</p>
+    <pre># ✅ With client certificate — should return JSON
+curl -v \
+  --cert  mtls-demo/certs/client/client.crt \
+  --key   mtls-demo/certs/client/client.key \
+  --cacert mtls-demo/certs/ca/ca.crt \
+  https://localhost:8443/api/cert-info
+
+# ❌ Without client certificate — should fail at TLS handshake
+curl -v \
+  --cacert mtls-demo/certs/ca/ca.crt \
+  https://localhost:8443/api/cert-info
+
+# ❌ Without any cert verification — TLS error (self-signed)
+curl -k https://localhost:8443/api/cert-info</pre>
+  </div>
+</main>
+
+<script>
+function colorize(text) {
+  return text.split('\n').map(line => {
+    if (/SSL_connect|SSL_write|SSL_read/.test(line)) return `<span class="line-info">${esc(line)}</span>`;
+    if (/Verification: OK|verify return:1|Verification error: ok/i.test(line)) return `<span class="line-ok">${esc(line)}</span>`;
+    if (/error:|Error:|ALERT|alert|CERTIFICATE_REQUIRED|certificate required/i.test(line)) return `<span class="line-err">${esc(line)}</span>`;
+    if (/Protocol version:|Ciphersuite:|Peer certificate:|Hash used:|Signature type:/i.test(line)) return `<span class="line-key">${esc(line)}</span>`;
+    if (/^[A-Z].*=/.test(line) || /depth=/.test(line)) return `<span class="line-data">${esc(line)}</span>`;
+    return `<span class="line-data">${esc(line)}</span>`;
+  }).join('\n');
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function runWithCert() {
+  const btn = document.getElementById('btn-with');
+  const box = document.getElementById('out-with');
+  btn.disabled = true;
+  box.innerHTML = '<span class="spin"></span> Running openssl s_client with client cert…';
+  try {
+    const r = await fetch('/api/openssl-trace');
+    const d = await r.json();
+    if (d.error) {
+      box.innerHTML = `<span class="line-err">Error: ${esc(d.error)}</span>`;
+    } else {
+      const combined = (d.stderr || '') + '\n' + (d.stdout || '');
+      box.innerHTML = colorize(combined.trim());
+    }
+  } catch(e) {
+    box.innerHTML = `<span class="line-err">Fetch error: ${esc(e.message)}</span>`;
+  }
+  btn.disabled = false;
+}
+
+async function runWithoutCert() {
+  const btn = document.getElementById('btn-without');
+  const box = document.getElementById('out-without');
+  btn.disabled = true;
+  box.innerHTML = '<span class="spin"></span> Running openssl s_client WITHOUT client cert…';
+  try {
+    const r = await fetch('/api/openssl-trace-no-cert');
+    const d = await r.json();
+    if (d.error) {
+      box.innerHTML = `<span class="line-err">Error: ${esc(d.error)}</span>`;
+    } else {
+      const combined = (d.stderr || '') + '\n' + (d.stdout || '');
+      box.innerHTML = colorize(combined.trim());
+    }
+  } catch(e) {
+    box.innerHTML = `<span class="line-err">Fetch error: ${esc(e.message)}</span>`;
+  }
+  btn.disabled = false;
+}
+</script>
+{% endblock %}

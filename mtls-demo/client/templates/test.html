@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Connection Test — mTLS Demo{% endblock %}
+
+{% block head %}
+<style>
+  main{max-width:900px;margin:2rem auto;padding:0 1.5rem;display:flex;flex-direction:column;gap:1.5rem}
+  .test-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+  @media(max-width:600px){.test-grid{grid-template-columns:1fr}}
+  .test-panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem;display:flex;flex-direction:column;gap:.8rem}
+  .test-panel.with{border-top:3px solid var(--green)}
+  .test-panel.without{border-top:3px solid var(--red)}
+  .test-btn{padding:.7rem 1.5rem;border:none;border-radius:6px;font-size:.9rem;font-weight:700;cursor:pointer;width:100%;transition:filter .15s}
+  .test-btn.go-green{background:#238636;color:#fff}
+  .test-btn.go-red{background:#da3633;color:#fff}
+  .test-btn:hover{filter:brightness(.85)}
+  .test-btn:disabled{opacity:.5;cursor:not-allowed}
+  .result-box{background:#010409;border:1px solid var(--border);border-radius:6px;padding:1rem;font-size:.78rem;font-family:monospace;min-height:120px;white-space:pre-wrap;word-break:break-word;overflow-y:auto;max-height:320px}
+  .badge-row{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+  .field{display:flex;flex-direction:column;gap:.1rem;margin-top:.4rem}
+  .field label{font-size:.7rem;color:var(--muted)}
+  .field value{font-size:.8rem;font-family:monospace;color:var(--text)}
+  .comparison{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .comparison table{width:100%;border-collapse:collapse;font-size:.82rem}
+  .comparison th{background:#010409;padding:.6rem .8rem;text-align:left;color:var(--muted);border-bottom:1px solid var(--border)}
+  .comparison td{padding:.5rem .8rem;border-bottom:1px solid #21262d;color:var(--muted)}
+  .comparison td.ok{color:var(--green)}
+  .comparison td.fail{color:var(--red)}
+  .seq{background:#010409;border:1px solid var(--border);border-radius:8px;padding:1rem;font-size:.8rem}
+  .seq-row{display:flex;align-items:center;gap:.6rem;padding:.3rem 0}
+  .seq-dot{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0}
+  .seq-dot.c{background:#1f3a6e;color:var(--blue)}
+  .seq-dot.s{background:#1a3a26;color:var(--green)}
+  .seq-dot.x{background:#3a1a1a;color:var(--red)}
+  .seq-text{font-size:.75rem;color:var(--muted)}
+  .seq-text strong{color:var(--text)}
+</style>
+{% endblock %}
+
+{% block content %}
+<main>
+  <div class="card blue">
+    <h2>🧪 Live Connection Test</h2>
+    <p>Fire real HTTPS requests from the client container to the Nginx mTLS server. See exactly what happens when the client certificate is present vs. absent.</p>
+  </div>
+
+  <div class="test-grid">
+    <!-- WITH cert -->
+    <div class="test-panel with">
+      <div class="badge-row">
+        <span class="tag green">✅ With Client Certificate</span>
+      </div>
+      <p>The Flask client uses <code>cert=(client.crt, client.key)</code> in the requests call. The server verifies the cert is signed by the CA and allows the connection.</p>
+      <button class="test-btn go-green" id="btn-with" onclick="testWith()">▶ Connect WITH cert</button>
+      <div class="result-box" id="res-with" style="color:var(--muted)">Result will appear here…</div>
+    </div>
+
+    <!-- WITHOUT cert -->
+    <div class="test-panel without">
+      <div class="badge-row">
+        <span class="tag red">❌ Without Client Certificate</span>
+      </div>
+      <p>The Flask client omits <code>cert=</code> entirely. With <code>ssl_verify_client on</code>, Nginx drops the connection during the TLS handshake — no HTTP response at all.</p>
+      <button class="test-btn go-red" id="btn-without" onclick="testWithout()">▶ Connect WITHOUT cert</button>
+      <div class="result-box" id="res-without" style="color:var(--muted)">Result will appear here…</div>
+    </div>
+  </div>
+
+  <!-- What actually happens -->
+  <div class="card">
+    <h2>🔬 What Happens Inside Each Connection</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+      <div>
+        <h3 style="color:var(--green);margin-bottom:.6rem">✅ With Client Certificate</h3>
+        <div class="seq">
+          <div class="seq-row"><div class="seq-dot c">C</div><div class="seq-text"><strong>ClientHello</strong> — announces capabilities</div></div>
+          <div class="seq-row"><div class="seq-dot s">S</div><div class="seq-text"><strong>ServerHello</strong> + key share</div></div>
+          <div class="seq-row"><div class="seq-dot s">S</div><div class="seq-text"><strong>CertificateRequest</strong> — server demands client cert</div></div>
+          <div class="seq-row"><div class="seq-dot s">S</div><div class="seq-text"><strong>Certificate</strong> + <strong>CertificateVerify</strong></div></div>
+          <div class="seq-row"><div class="seq-dot c">C</div><div class="seq-text"><strong>Certificate</strong> — client.crt sent</div></div>
+          <div class="seq-row"><div class="seq-dot c">C</div><div class="seq-text"><strong>CertificateVerify</strong> — signed with client.key</div></div>
+          <div class="seq-row"><div class="seq-dot s">S</div><div class="seq-text" style="color:var(--green)"><strong>✅ Verified!</strong> HTTP response sent</div></div>
+        </div>
+      </div>
+      <div>
+        <h3 style="color:var(--red);margin-bottom:.6rem">❌ Without Client Certificate</h3>
+        <div class="seq">
+          <div class="seq-row"><div class="seq-dot c">C</div><div class="seq-text"><strong>ClientHello</strong> — announces capabilities</div></div>
+          <div class="seq-row"><div class="seq-dot s">S</div><div class="seq-text"><strong>ServerHello</strong> + key share</div></div>
+          <div class="seq-row"><div class="seq-dot s">S</div><div class="seq-text"><strong>CertificateRequest</strong> — server demands client cert</div></div>
+          <div class="seq-row"><div class="seq-dot s">S</div><div class="seq-text"><strong>Certificate</strong> + <strong>CertificateVerify</strong></div></div>
+          <div class="seq-row"><div class="seq-dot c">C</div><div class="seq-text">Client sends empty Certificate message (no cert!)</div></div>
+          <div class="seq-row"><div class="seq-dot x">✗</div><div class="seq-text" style="color:var(--red)"><strong>ALERT: certificate_required</strong><br><small>Nginx sends TLS alert, drops TCP connection</small></div></div>
+          <div class="seq-row"><div class="seq-dot x">✗</div><div class="seq-text" style="color:var(--red)">SSL Error raised — no HTTP response ever sent</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison table -->
+  <div class="comparison card" style="padding:0">
+    <h2 style="padding:1rem 1.2rem;border-bottom:1px solid var(--border)">📊 Side-by-Side Comparison</h2>
+    <table>
+      <tr><th>Aspect</th><th>With Client Cert</th><th>Without Client Cert</th></tr>
+      <tr><td>TLS Handshake</td><td class="ok">Completes (10 messages)</td><td class="fail">Aborted at alert</td></tr>
+      <tr><td>HTTP Request sent?</td><td class="ok">Yes</td><td class="fail">Never — dropped at TLS layer</td></tr>
+      <tr><td>HTTP Response</td><td class="ok">200 OK with JSON</td><td class="fail">SSL Error — no response</td></tr>
+      <tr><td>Nginx access.log</td><td class="ok">Records 200 request</td><td class="fail">No log entry (pre-HTTP)</td></tr>
+      <tr><td>Application code reached?</td><td class="ok">Yes</td><td class="fail">No — blocked before app layer</td></tr>
+      <tr><td>Attack surface exposed</td><td class="ok">Minimal</td><td class="fail">None — can't even probe</td></tr>
+    </table>
+  </div>
+
+  <!-- Python code -->
+  <div class="card">
+    <h2>🐍 Python Code Behind the Test</h2>
+    <pre># WITH client certificate — mTLS
+response = requests.get(
+    "https://mtls-server/api/cert-info",
+    cert=("/app/certs/client/client.crt",   # ← client certificate
+          "/app/certs/client/client.key"),   # ← private key
+    verify="/app/certs/ca/ca.crt",           # ← CA to verify server cert
+)
+# → 200 OK, server returns cert metadata
+
+# WITHOUT client certificate — plain TLS
+response = requests.get(
+    "https://mtls-server/api/cert-info",
+    # cert= omitted intentionally
+    verify="/app/certs/ca/ca.crt",
+)
+# → raises requests.exceptions.SSLError
+#   "certificate_required" TLS alert from server</pre>
+  </div>
+</main>
+
+<script>
+async function testWith() {
+  const btn = document.getElementById('btn-with');
+  const box = document.getElementById('res-with');
+  btn.disabled = true;
+  box.style.color = 'var(--muted)';
+  box.textContent = '⏳ Connecting with client certificate…';
+  try {
+    const r = await fetch('/api/connect-with-cert');
+    const d = await r.json();
+    if (d.success) {
+      box.style.color = 'var(--green)';
+      box.textContent = `✅ SUCCESS (${d.elapsed_ms}ms)
+
+HTTP Status: ${d.status_code}
+TLS Protocol: ${d.server_data?.protocol || '—'}
+Cipher Suite: ${d.server_data?.cipher || '—'}
+
+Server verified client cert:
+  verify  = ${d.server_data?.verify || '—'}
+  subject = ${d.server_data?.subject || '—'}
+  issuer  = ${d.server_data?.issuer || '—'}
+  serial  = ${d.server_data?.serial || '—'}
+
+Response headers from Nginx:
+${Object.entries(d.tls_headers||{}).map(([k,v])=>`  ${k}: ${v}`).join('\n') || '  (none)'}`;
+    } else {
+      box.style.color = 'var(--red)';
+      box.textContent = `❌ FAILED\n\n${d.error}\n\n${d.detail}`;
+    }
+  } catch(e) {
+    box.style.color = 'var(--red)';
+    box.textContent = 'Network error: ' + e.message;
+  }
+  btn.disabled = false;
+}
+
+async function testWithout() {
+  const btn = document.getElementById('btn-without');
+  const box = document.getElementById('res-without');
+  btn.disabled = true;
+  box.style.color = 'var(--muted)';
+  box.textContent = '⏳ Connecting WITHOUT client certificate…';
+  try {
+    const r = await fetch('/api/connect-without-cert');
+    const d = await r.json();
+    if (d.expected && !d.success) {
+      box.style.color = 'var(--orange)';
+      box.textContent = `✅ CORRECTLY REJECTED (${d.elapsed_ms}ms)
+
+${d.error}
+
+This is the EXPECTED behaviour with ssl_verify_client on.
+
+The Nginx server sent a TLS "certificate_required" alert
+and closed the TCP connection. No HTTP request was ever
+processed. This is mTLS working as designed.
+
+SSL Error detail:
+${d.detail}`;
+    } else if (d.success) {
+      box.style.color = 'var(--red)';
+      box.textContent = `⚠️ WARNING: Server accepted without client cert!\n\nmTLS may not be configured correctly.\n\nStatus: ${d.status_code}`;
+    } else {
+      box.style.color = 'var(--red)';
+      box.textContent = `Error: ${d.error}\n\n${d.detail}`;
+    }
+  } catch(e) {
+    box.style.color = 'var(--red)';
+    box.textContent = 'Network error: ' + e.message;
+  }
+  btn.disabled = false;
+}
+</script>
+{% endblock %}

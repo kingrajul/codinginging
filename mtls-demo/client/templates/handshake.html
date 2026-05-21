@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}TLS Handshake — mTLS Demo{% endblock %}
+
+{% block head %}
+<style>
+  main{max-width:960px;margin:2rem auto;padding:0 1.5rem;display:flex;flex-direction:column;gap:1.5rem}
+
+  /* ── Diagram ── */
+  .diagram-wrap{background:#010409;border:1px solid var(--border);border-radius:10px;padding:1.5rem;overflow:hidden}
+  .diagram{display:grid;grid-template-columns:160px 1fr 160px;gap:0;min-height:620px}
+  .actor{display:flex;flex-direction:column;align-items:center;gap:.5rem;padding-top:.5rem}
+  .actor-box{padding:.6rem 1rem;border-radius:8px;font-size:.82rem;font-weight:700;text-align:center;min-width:120px}
+  .actor-box.client{background:#1f3a6e;border:2px solid var(--blue);color:var(--blue)}
+  .actor-box.server{background:#1a3a26;border:2px solid var(--green);color:var(--green)}
+  .actor-line{width:2px;background:var(--border);flex:1;margin-top:.3rem}
+  .timeline{position:relative;padding:.5rem 0}
+
+  /* Steps */
+  .step{display:none;flex-direction:column;gap:.3rem;animation:fadeIn .3s ease}
+  .step.visible{display:flex}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+  .msg{display:flex;align-items:center;gap:.5rem;padding:.35rem 0}
+  .msg-arrow{flex:1;height:2px;position:relative}
+  .msg-arrow::after{content:'';position:absolute;top:-4px;width:0;height:0;border:5px solid transparent}
+  .msg-arrow.right{background:linear-gradient(90deg,var(--blue),#3fb95088)}
+  .msg-arrow.right::after{right:-2px;border-left-color:var(--green);border-right:none}
+  .msg-arrow.left{background:linear-gradient(90deg,#3fb95088,var(--blue))}
+  .msg-arrow.left::after{left:-2px;border-right-color:var(--blue);border-left:none}
+  .msg-arrow.both{background:linear-gradient(90deg,var(--purple),var(--orange))}
+  .msg-label{position:absolute;top:-18px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:.7rem;font-weight:600;padding:.1rem .5rem;border-radius:3px}
+  .msg-wrap{position:relative;flex:1}
+
+  .step-badge{display:inline-block;padding:.15rem .5rem;border-radius:3px;font-size:.7rem;font-weight:700;margin-right:.3rem}
+
+  /* Step explanation panel */
+  .explain{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.2rem;min-height:160px}
+  .explain h3{font-size:1rem;margin-bottom:.6rem}
+  .explain .data-list{display:flex;flex-direction:column;gap:.25rem;margin-top:.6rem}
+  .data-item{font-size:.75rem;background:#010409;padding:.3rem .6rem;border-radius:4px;color:#82c4f8;font-family:monospace}
+
+  /* Controls */
+  .controls{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap}
+  .step-counter{font-size:.82rem;color:var(--muted)}
+  .progress{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;min-width:80px}
+  .progress-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--green));transition:width .3s}
+  .encrypted-badge{padding:.2rem .6rem;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);border-radius:4px;font-size:.72rem;color:var(--green);margin-left:auto}
+</style>
+{% endblock %}
+
+{% block content %}
+<main>
+  <div class="card blue">
+    <h2>🤝 TLS 1.3 Mutual Authentication Handshake</h2>
+    <p>Watch how client and server establish a mutually authenticated encrypted channel. Steps highlighted in <span style="color:var(--purple)">purple</span> are the extra exchanges that make it <em>mutual</em> TLS.</p>
+  </div>
+
+  <!-- Controls -->
+  <div class="card" style="padding:1rem 1.5rem">
+    <div class="controls">
+      <button class="btn blue" id="btn-prev" onclick="prevStep()" disabled>◀ Prev</button>
+      <button class="btn green" id="btn-next" onclick="nextStep()">Next ▶</button>
+      <button class="btn ghost" onclick="resetAnim()">↺ Reset</button>
+      <div class="progress"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <span class="step-counter" id="step-counter">Step 0 / 10</span>
+      <span class="encrypted-badge" id="enc-badge" style="display:none">🔒 Encrypted from here</span>
+    </div>
+  </div>
+
+  <!-- Diagram + explanation side by side -->
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:1.2rem">
+    <div class="diagram-wrap">
+      <div class="diagram">
+        <!-- Left actor: CLIENT -->
+        <div class="actor">
+          <div class="actor-box client">🖥️ CLIENT<br><small style="font-weight:400;font-size:.65rem">Flask container</small></div>
+          <div class="actor-line"></div>
+        </div>
+
+        <!-- Timeline messages -->
+        <div class="timeline" id="timeline">
+          <!-- steps injected by JS -->
+        </div>
+
+        <!-- Right actor: SERVER -->
+        <div class="actor">
+          <div class="actor-box server">📦 SERVER<br><small style="font-weight:400;font-size:.65rem">Nginx container</small></div>
+          <div class="actor-line"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Explanation panel -->
+    <div class="explain" id="explain">
+      <h3 style="color:var(--muted)">Press <strong>Next</strong> to start the walkthrough</h3>
+      <p>Each step will be explained here with the actual data being exchanged.</p>
+    </div>
+  </div>
+
+  <!-- Full step table -->
+  <div class="card">
+    <h2>📋 All Handshake Steps</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">#</th>
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">Message</th>
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">Direction</th>
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">mTLS specific?</th>
+          <th style="text-align:left;padding:.5rem;color:var(--muted)">Purpose</th>
+        </tr>
+      </thead>
+      <tbody id="step-table"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>🔑 Key Insight: Why mTLS is Stronger Than Tokens</h2>
+    <ul>
+      <li>The client private key <strong>never leaves the key store</strong>. It signs a challenge; the raw key is never transmitted.</li>
+      <li>Stolen cookies/JWTs can be replayed from anywhere. A stolen client certificate is useless without the matching private key.</li>
+      <li>Authentication happens at the <strong>TLS layer</strong>, before any HTTP request. Unauthenticated clients never reach your application code.</li>
+      <li>In <code>ssl_verify_client on</code> mode, Nginx drops the TCP connection before sending HTTP 401 — attackers cannot probe your API at all.</li>
+    </ul>
+  </div>
+</main>
+
+<script>
+const STEPS = [
+  {
+    id: 1, name: 'ClientHello', dir: 'right', color: 'var(--blue)', mtls: false,
+    summary: 'Client initiates the TLS handshake',
+    detail: 'The client opens a TCP connection and sends ClientHello announcing its capabilities. No encryption yet — this is in plaintext.',
+    data: [
+      'Supported TLS versions: [TLS 1.3, TLS 1.2]',
+      'Cipher suites: [TLS_AES_256_GCM_SHA384, TLS_CHACHA20_POLY1305_SHA256, ...]',
+      'Client random: a3f7c2d8... (32 random bytes)',
+      'Key share: ECDH public key (X25519 curve)',
+      'SNI extension: mtls-server',
+    ]
+  },
+  {
+    id: 2, name: 'ServerHello', dir: 'left', color: 'var(--green)', mtls: false,
+    summary: 'Server selects cipher, sends its key share',
+    detail: 'Server picks TLS 1.3 and a cipher suite. It sends its ECDH key share. Both sides now independently compute the same session keys using ECDH — no key is transmitted.',
+    data: [
+      'TLS version: TLS 1.3',
+      'Chosen cipher: TLS_AES_256_GCM_SHA384',
+      'Server random: f9e1a4b2... (32 random bytes)',
+      'Server key share: ECDH public key (X25519)',
+      '→ Both sides now derive: handshake secret, client/server keys',
+    ]
+  },
+  {
+    id: 3, name: '{EncryptedExtensions}', dir: 'left', color: 'var(--orange)', mtls: false, encrypted: true,
+    summary: 'Server sends extensions (now encrypted)',
+    detail: 'All subsequent messages are encrypted with the handshake keys derived in step 2. Curly braces { } denote encryption in TLS 1.3 notation.',
+    data: [
+      '🔒 Encrypted with handshake key',
+      'Server name indication confirmation',
+      'ALPN: h2 / http/1.1',
+      'Max fragment length',
+    ]
+  },
+  {
+    id: 4, name: '{CertificateRequest}', dir: 'left', color: 'var(--purple)', mtls: true, encrypted: true,
+    summary: '★ mTLS: Server demands a client certificate',
+    detail: 'This message only exists in mTLS. The server tells the client which CA(s) it trusts and which signature algorithms are acceptable. Without this message it is plain TLS — the client would not need to authenticate.',
+    data: [
+      '🔒 Encrypted',
+      '★ mTLS-only message',
+      'Certificate_request_context: unique nonce',
+      'Acceptable CAs: [CN=mTLS Demo Root CA]',
+      'Signature algorithms: ecdsa_secp256r1_sha256, rsa_pss_rsae_sha256',
+    ]
+  },
+  {
+    id: 5, name: '{Certificate}', dir: 'left', color: 'var(--green)', mtls: false, encrypted: true,
+    summary: 'Server sends its certificate chain',
+    detail: 'The server sends its X.509 certificate (signed by the CA). The client will verify: signature valid, not expired, CN/SAN matches hostname, CA is trusted.',
+    data: [
+      '🔒 Encrypted',
+      'Certificate: Subject=CN=mtls-server',
+      'SAN: DNS:mtls-server, DNS:localhost, IP:127.0.0.1',
+      'Signed by: CN=mTLS Demo Root CA',
+      'Client checks: Is CA in trust store? ✓ Valid? ✓ Hostname matches? ✓',
+    ]
+  },
+  {
+    id: 6, name: '{CertificateVerify}', dir: 'left', color: 'var(--green)', mtls: false, encrypted: true,
+    summary: 'Server proves it owns the private key',
+    detail: 'The server signs a transcript hash of all previous handshake messages with its private key. The client verifies this signature using the public key from the server certificate.',
+    data: [
+      '🔒 Encrypted',
+      'Algorithm: rsa_pss_rsae_sha256',
+      'Signature: sign(private_key, SHA256(all_handshake_msgs))',
+      'Client verifies: verify(server_pub_key, signature) → ✓',
+    ]
+  },
+  {
+    id: 7, name: '{Finished}', dir: 'left', color: 'var(--green)', mtls: false, encrypted: true,
+    summary: 'Server Finished — server half complete',
+    detail: 'HMAC over all handshake messages using the server write key. Proves the server has derived the same keys and no messages were tampered with.',
+    data: [
+      '🔒 Encrypted',
+      'verify_data: HMAC-SHA256(server_finished_key, Transcript-Hash)',
+    ]
+  },
+  {
+    id: 8, name: '{Certificate}', dir: 'right', color: 'var(--purple)', mtls: true, encrypted: true,
+    summary: '★ mTLS: Client sends its certificate',
+    detail: 'In response to step 4 (CertificateRequest), the client sends its own X.509 certificate. The server will verify it was signed by the trusted CA.',
+    data: [
+      '🔒 Encrypted',
+      '★ mTLS-only message',
+      'Certificate: Subject=CN=demo-client',
+      'EmailAddress: client@mtls.demo',
+      'Signed by: CN=mTLS Demo Root CA',
+      'Server checks: Signed by trusted CA? ✓ Valid? ✓ extKeyUsage=clientAuth? ✓',
+    ]
+  },
+  {
+    id: 9, name: '{CertificateVerify}', dir: 'right', color: 'var(--purple)', mtls: true, encrypted: true,
+    summary: '★ mTLS: Client proves it owns the private key',
+    detail: 'The client signs the handshake transcript with its private key. The server verifies using the public key from step 8. This is what proves the client actually possesses the matching private key — not just a copy of the certificate.',
+    data: [
+      '🔒 Encrypted',
+      '★ mTLS-only message',
+      'Algorithm: rsa_pss_rsae_sha256',
+      'Signature: sign(client_private_key, SHA256(all_handshake_msgs))',
+      'Server verifies: verify(client_pub_key, signature) → ✓',
+    ]
+  },
+  {
+    id: 10, name: '{Finished}', dir: 'right', color: 'var(--blue)', mtls: false, encrypted: true,
+    summary: 'Client Finished — handshake complete!',
+    detail: 'Both sides are now fully authenticated. Application data flows encrypted with the derived application keys. The handshake took just 1 round-trip (1-RTT) in TLS 1.3.',
+    data: [
+      '🔒 Encrypted',
+      'verify_data: HMAC-SHA256(client_finished_key, Transcript-Hash)',
+      '✅ Handshake complete — both parties authenticated',
+      '✅ Application keys established',
+      '→ HTTP request / response can now flow',
+    ]
+  },
+];
+
+let current = 0;
+let encryptedShown = false;
+
+function buildTimeline() {
+  const tl = document.getElementById('timeline');
+  const tbody = document.getElementById('step-table');
+  STEPS.forEach((s, i) => {
+    // Timeline row
+    const row = document.createElement('div');
+    row.className = 'step';
+    row.id = `step-${i}`;
+    const color = s.mtls ? 'var(--purple)' : (s.dir==='right' ? 'var(--blue)' : 'var(--green)');
+    row.innerHTML = `
+      <div class="msg">
+        ${s.dir==='left'?`<div class="msg-wrap"><div class="msg-arrow left" style="background:linear-gradient(90deg,${color}88,${color})"><span class="msg-label" style="background:${color}22;color:${color};border:1px solid ${color}44">${s.mtls?'★ ':''}${s.name}</span></div></div>`:'<div style="width:160px"></div>'}
+        ${s.dir==='right'?`<div class="msg-wrap"><div class="msg-arrow right" style="background:linear-gradient(90deg,${color},${color}88)"><span class="msg-label" style="background:${color}22;color:${color};border:1px solid ${color}44">${s.mtls?'★ ':''}${s.name}</span></div></div>`:''}
+      </div>
+      <div style="height:.8rem"></div>`;
+    tl.appendChild(row);
+
+    // Table row
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border)';
+    tr.innerHTML = `
+      <td style="padding:.4rem .5rem;color:var(--muted)">${s.id}</td>
+      <td style="padding:.4rem .5rem"><code>${s.name}</code></td>
+      <td style="padding:.4rem .5rem;color:var(--muted)">${s.dir==='right'?'Client → Server':'Server → Client'}</td>
+      <td style="padding:.4rem .5rem">${s.mtls?'<span class="tag" style="background:rgba(188,140,255,.15);color:var(--purple);border:1px solid rgba(188,140,255,.3)">★ mTLS only</span>':'<span class="tag blue">Standard TLS</span>'}</td>
+      <td style="padding:.4rem .5rem;color:var(--muted)">${s.summary}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function showStep(n) {
+  // Show all steps up to n
+  STEPS.forEach((_, i) => {
+    document.getElementById(`step-${i}`).classList.toggle('visible', i < n);
+  });
+
+  const pct = (n / STEPS.length) * 100;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('step-counter').textContent = `Step ${n} / ${STEPS.length}`;
+  document.getElementById('btn-prev').disabled = n === 0;
+  document.getElementById('btn-next').disabled = n === STEPS.length;
+
+  if (n === 0) {
+    document.getElementById('explain').innerHTML = `<h3 style="color:var(--muted)">Press <strong>Next</strong> to start</h3><p>Each step will be explained here.</p>`;
+    document.getElementById('enc-badge').style.display = 'none';
+    encryptedShown = false;
+    return;
+  }
+
+  const s = STEPS[n - 1];
+  const color = s.mtls ? 'var(--purple)' : (s.dir==='right' ? 'var(--blue)' : 'var(--green)');
+
+  if (s.encrypted && !encryptedShown) {
+    document.getElementById('enc-badge').style.display = 'inline-block';
+    encryptedShown = true;
+  }
+
+  document.getElementById('explain').innerHTML = `
+    <h3 style="color:${color}">${s.id}. ${s.name}${s.mtls?' <span style="color:var(--purple);font-size:.8rem">★ mTLS</span>':''}</h3>
+    <p>${s.detail}</p>
+    <div class="data-list">${(s.data||[]).map(d=>`<div class="data-item">${d}</div>`).join('')}</div>`;
+}
+
+function nextStep() { if (current < STEPS.length) { current++; showStep(current); } }
+function prevStep() { if (current > 0) { current--; showStep(current); } }
+function resetAnim() { current = 0; showStep(0); encryptedShown = false; }
+
+buildTimeline();
+showStep(0);
+</script>
+{% endblock %}

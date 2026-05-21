@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>mTLS Server — Authenticated</title>
+  <style>
+    :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--green:#3fb950;--blue:#58a6ff;--orange:#d29922}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+    header{background:linear-gradient(135deg,#0a3d2e,#1a6e4a);padding:2.5rem 2rem;text-align:center;border-bottom:3px solid var(--green)}
+    header h1{font-size:2rem}
+    header p{color:#a0ffc8;margin-top:.5rem;font-size:.95rem}
+    .badge{display:inline-block;background:rgba(0,0,0,.4);border:1px solid var(--green);border-radius:4px;padding:.25rem .8rem;font-size:.75rem;letter-spacing:1px;color:var(--green);margin-top:.6rem}
+    main{max-width:860px;margin:2rem auto;padding:0 1.5rem;display:flex;flex-direction:column;gap:1.5rem}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.5rem}
+    .card.green{border-left:4px solid var(--green)}
+    .card.blue{border-left:4px solid var(--blue)}
+    h2{font-size:1.1rem;color:var(--blue);margin-bottom:1rem}
+    .green h2{color:var(--green)}
+    p{font-size:.9rem;color:var(--muted);margin-bottom:.6rem}
+    code{font-family:monospace;font-size:.82rem;background:#0b1629;color:#82c4f8;padding:.1rem .4rem;border-radius:3px}
+    pre{font-family:monospace;font-size:.82rem;background:#0b1629;color:#82c4f8;padding:1rem;border-radius:6px;overflow-x:auto;border:1px solid var(--border);margin:.6rem 0;white-space:pre-wrap}
+    .cert-grid{display:grid;grid-template-columns:auto 1fr;gap:.4rem .8rem;font-size:.85rem}
+    .cert-grid .label{color:var(--muted);font-size:.8rem;padding-top:.15rem}
+    .cert-grid .val{color:var(--text);word-break:break-all}
+    .status-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
+    .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+    .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    footer{text-align:center;margin:2rem 0 1rem;color:var(--muted);font-size:.8rem}
+  </style>
+</head>
+<body>
+<header>
+  <h1>🔐 mTLS Server</h1>
+  <div class="badge">MUTUAL TLS AUTHENTICATED</div>
+  <p>You reached this page because your client presented a valid, CA-signed certificate.<br>
+     Without it, Nginx would have rejected the TLS handshake before serving a single byte.</p>
+</header>
+
+<main>
+  <div class="card green">
+    <h2>✅ Your Connection is Mutually Authenticated</h2>
+    <div class="status-row"><div class="dot"></div><span style="font-size:.9rem">Client certificate verified by server CA</span></div>
+    <div class="status-row"><div class="dot"></div><span style="font-size:.9rem">Server certificate verified by client</span></div>
+    <div class="status-row"><div class="dot"></div><span style="font-size:.9rem">All traffic encrypted end-to-end</span></div>
+  </div>
+
+  <div class="card blue">
+    <h2>🪪 Your Client Certificate (live from Nginx vars)</h2>
+    <div id="cert-loading" style="display:flex;gap:.5rem;align-items:center;color:var(--muted);font-size:.85rem">
+      <div class="spinner"></div> Fetching cert info from /api/cert-info…
+    </div>
+    <div class="cert-grid" id="cert-grid" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <h2>🔎 How Nginx Exposes These Values</h2>
+    <p>Nginx makes TLS session data available as variables. This page fetches <code>/api/cert-info</code> which returns:</p>
+    <pre>location /api/cert-info {
+    add_header Content-Type 'application/json';
+    return 200 '{"verify":"$ssl_client_verify",
+                 "subject":"$ssl_client_s_dn",
+                 "issuer":"$ssl_client_i_dn",
+                 "serial":"$ssl_client_serial",
+                 "protocol":"$ssl_protocol",
+                 "cipher":"$ssl_cipher"}';
+}</pre>
+    <p>These variables are only populated because <code>ssl_verify_client on</code> forces the mTLS handshake. Without it, <code>$ssl_client_verify</code> would always be <code>NONE</code>.</p>
+  </div>
+
+  <div class="card">
+    <h2>📋 Response Headers (check DevTools)</h2>
+    <p>Every response from this server includes custom headers so you can inspect TLS info in the browser's Network tab:</p>
+    <pre>X-Client-Verify:  SUCCESS
+X-Client-Subject: CN=demo-client,OU=Client,O=mTLS Demo,...
+X-TLS-Protocol:   TLSv1.3
+X-TLS-Cipher:     TLS_AES_256_GCM_SHA384</pre>
+  </div>
+</main>
+
+<footer>This page is only accessible with a valid client certificate. Go back to the client app at http://localhost:8888</footer>
+
+<script>
+fetch('/api/cert-info')
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('cert-loading').style.display = 'none';
+    const grid = document.getElementById('cert-grid');
+    grid.style.display = 'grid';
+    const rows = [
+      ['Verification',  d.verify],
+      ['Subject DN',    d.subject],
+      ['Issuer DN',     d.issuer],
+      ['Serial',        d.serial],
+      ['Fingerprint',   d.fingerprint],
+      ['TLS Protocol',  d.protocol],
+      ['Cipher Suite',  d.cipher],
+      ['Session Reused',d.session_reused],
+    ];
+    rows.forEach(([label, val]) => {
+      const l = document.createElement('div');
+      l.className = 'label'; l.textContent = label;
+      const v = document.createElement('div');
+      v.className = 'val';
+      const c = document.createElement('code'); c.textContent = val || '—';
+      v.appendChild(c);
+      grid.appendChild(l); grid.appendChild(v);
+    });
+  })
+  .catch(e => {
+    document.getElementById('cert-loading').innerHTML = '⚠️ Could not load cert info: ' + e.message;
+  });
+</script>
+</body>
+</html>

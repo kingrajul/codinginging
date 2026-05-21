@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>mTLS — Client Certificate Required</title>
+  <style>
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#0d1117;color:#e6edf3;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+    .box{background:#161b22;border:1px solid #f85149;border-left:4px solid #f85149;border-radius:10px;padding:2rem;max-width:600px;text-align:center}
+    h1{color:#f85149;font-size:1.5rem;margin-bottom:1rem}
+    p{color:#8b949e;font-size:.9rem;margin-bottom:.7rem;text-align:left}
+    code{background:#0b1629;color:#82c4f8;padding:.1rem .4rem;border-radius:3px;font-size:.82rem}
+    .back{display:inline-block;margin-top:1rem;padding:.5rem 1.2rem;background:#238636;border-radius:6px;color:#fff;text-decoration:none;font-size:.85rem}
+  </style>
+</head>
+<body>
+<div class="box">
+  <h1>🚫 Client Certificate Required</h1>
+  <p>This server requires <strong>mutual TLS (mTLS)</strong>. Your browser did not present a valid client certificate, so Nginx rejected the handshake.</p>
+  <p>This is intentional and is the core security benefit of mTLS: the server authenticates <em>you</em> (the client) at the TLS layer, before any HTTP request is processed.</p>
+  <p>To access this page with a client cert:</p>
+  <p>
+    <code>curl --cert certs/client/client.crt --key certs/client/client.key --cacert certs/ca/ca.crt https://localhost:8443/</code>
+  </p>
+  <p>Or import <code>certs/client/client.p12</code> (password: <code>client123</code>) into your browser's certificate store.</p>
+  <a class="back" href="http://localhost:8888">← Use the client demo app instead</a>
+</div>
+</body>
+</html>
