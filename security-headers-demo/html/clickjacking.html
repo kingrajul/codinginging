@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Clickjacking — Missing X-Frame-Options</title>
+  <style>
+    :root { --dark:#1a1a2e; --card:#16213e; --red:#e74c3c; --green:#27ae60; --text:#eaeaea; --muted:#8899aa; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--dark); color:var(--text); line-height:1.6; }
+    header { background:linear-gradient(135deg,#4a1942,#8e1a7a); padding:2rem; border-bottom:3px solid #9b59b6; }
+    header h1 { font-size:1.8rem; }
+    header .sub { color:#f0c9ff; font-size:0.9rem; margin-top:0.3rem; }
+    nav { padding:0.7rem 2rem; background:#0f1f3a; font-size:0.85rem; }
+    nav a { color:#aac4ff; text-decoration:none; }
+    main { max-width:860px; margin:2rem auto; padding:0 1.5rem; display:flex; flex-direction:column; gap:2rem; }
+    .panel { background:var(--card); border:1px solid #2a3a5c; border-radius:10px; padding:1.5rem; }
+    .panel.attack { border-left:4px solid var(--red); }
+    .panel.fix    { border-left:4px solid var(--green); }
+    .panel h2 { font-size:1.1rem; margin-bottom:1rem; }
+    .panel.attack h2 { color:var(--red); }
+    .panel.fix h2    { color:var(--green); }
+    p { font-size:0.92rem; color:var(--muted); margin-bottom:0.8rem; }
+    code, pre { font-family:'Fira Code',monospace; font-size:0.85rem; background:#0f1f3a; color:#82c4f8; }
+    pre { padding:1rem; border-radius:6px; overflow-x:auto; border:1px solid #1e3a5a; margin:0.8rem 0; }
+    code { padding:0.1rem 0.4rem; border-radius:3px; }
+    ol,ul { padding-left:1.5rem; }
+    ol li, ul li { font-size:0.88rem; color:var(--muted); margin-bottom:0.5rem; }
+    .step-num { display:inline-block; background:var(--red); color:#fff; width:1.4rem; height:1.4rem; border-radius:50%; text-align:center; line-height:1.4rem; font-size:0.75rem; font-weight:700; margin-right:0.5rem; }
+    .header-block { background:#0b1629; border:1px solid var(--green); border-radius:6px; padding:1rem; font-family:monospace; font-size:0.85rem; color:#82f8a4; margin:0.8rem 0; }
+    /* clickjacking demo */
+    .cj-demo {
+      position:relative; border:1px dashed #4a6fa5; border-radius:6px; padding:1rem;
+      background:#0b1629; margin-top:1rem; overflow:hidden; height:220px;
+    }
+    .victim-iframe {
+      width:100%; height:200px; border:none; border-radius:4px; display:block;
+    }
+    .evil-overlay {
+      position:absolute; top:0; left:0; width:100%; height:100%;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:1rem;
+    }
+    .evil-overlay-inner {
+      background:rgba(0,0,0,0.0); /* transparent — user can't see it */
+      width:100%; height:100%;
+      cursor:pointer;
+    }
+    .fake-btn {
+      padding:0.7rem 2rem; background:#2ecc71; color:#000; font-weight:700;
+      border:none; border-radius:6px; font-size:1rem; cursor:pointer;
+      pointer-events:none;
+    }
+    .toggle-overlay-btn {
+      margin-top:0.8rem; padding:0.4rem 1rem;
+      background:#9b59b6; border:none; border-radius:4px; color:#fff;
+      cursor:pointer; font-size:0.82rem;
+    }
+    .toggle-overlay-btn:hover { background:#8e44ad; }
+    footer { text-align:center; margin:2rem 0 1rem; color:var(--muted); font-size:0.8rem; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🖱️ Clickjacking</h1>
+  <div class="sub">Missing header: <code style="background:rgba(0,0,0,0.3);padding:0.1rem 0.4rem;border-radius:3px">X-Frame-Options</code> / <code style="background:rgba(0,0,0,0.3);padding:0.1rem 0.4rem;border-radius:3px">frame-ancestors</code> CSP directive</div>
+</header>
+<nav><a href="index.html">← Back to all demos</a></nav>
+
+<main>
+
+  <div class="panel">
+    <h2>📖 What is Clickjacking?</h2>
+    <p>Clickjacking (UI Redress Attack) tricks a victim into clicking something on a hidden page by overlaying that page inside a transparent <code>&lt;iframe&gt;</code> on an attacker-controlled site.</p>
+    <p>Classic targets include: <em>Like buttons, Follow buttons, Transfer funds, Delete account, Allow camera/mic access, OAuth authorization screens.</em></p>
+    <p>The victim sees a harmless-looking page; the real click goes to the concealed frame below.</p>
+  </div>
+
+  <div class="panel attack">
+    <h2>🔴 Live Demo — The Invisible Frame Trick</h2>
+    <p>Below is a simulation. Click <strong>"Toggle overlay visibility"</strong> to switch between what the victim sees (green button only) and what is actually happening (the iframe below the overlay).</p>
+    <p>The attacker places a real page in the iframe and positions their fake button exactly over a sensitive action on that real page. The victim clicks the green "Win a Prize!" button but actually interacts with the page in the frame.</p>
+
+    <div class="cj-demo" id="cjDemo">
+      <!-- The real page the attacker is targeting -->
+      <iframe class="victim-iframe" src="victim-page.html" id="victimFrame" style="opacity:0.07"></iframe>
+      <!-- Attacker's overlay -->
+      <div class="evil-overlay" id="evilOverlay" onclick="handleClick()">
+        <button class="fake-btn">🎉 Click here to Win a Prize!</button>
+      </div>
+    </div>
+    <button class="toggle-overlay-btn" onclick="toggleView()">Toggle overlay visibility (reveal the frame)</button>
+    <p id="clickMsg" style="margin-top:0.6rem;font-size:0.85rem;color:#e74c3c;display:none">
+      ☠️ You just "clicked" the hidden button on the victim page!
+    </p>
+  </div>
+
+  <div class="panel attack">
+    <h2>🔴 How the Attack Works — Step by Step</h2>
+    <ol>
+      <li><span class="step-num">1</span>Attacker registers a site like <code>win-free-stuff.example.com</code>.</li>
+      <li><span class="step-num">2</span>The page embeds the target site (e.g. a bank's transfer page) in a full-screen <code>&lt;iframe&gt;</code> with <code>opacity: 0</code>.</li>
+      <li><span class="step-num">3</span>A tempting button or game element is positioned precisely over the "Confirm Transfer" button in the hidden frame.</li>
+      <li><span class="step-num">4</span>Victim is lured to the attacker's page and clicks the visible element, unknowingly confirming the transfer on the bank site.</li>
+      <li><span class="step-num">5</span>The click goes to the bank iframe (victim is already authenticated), the action completes.</li>
+    </ol>
+    <p style="margin-top:0.8rem">Attack code is as simple as:</p>
+    <pre>&lt;!-- attacker's page --&gt;
+&lt;style&gt;
+  iframe { position:fixed; top:0; left:0; width:100%; height:100%; opacity:0; z-index:2; }
+  button { position:fixed; top:320px; left:200px; z-index:1; }
+&lt;/style&gt;
+&lt;iframe src="https://bank.example/transfer?to=attacker&amp;amount=1000"&gt;&lt;/iframe&gt;
+&lt;button&gt;Collect your reward!&lt;/button&gt;</pre>
+  </div>
+
+  <div class="panel fix">
+    <h2>✅ The Fix — X-Frame-Options &amp; CSP frame-ancestors</h2>
+    <p><strong>Option 1 — X-Frame-Options</strong> (legacy, widely supported):</p>
+    <div class="header-block">X-Frame-Options: DENY</div>
+    <p>Tells every browser: this page must never be loaded in a frame, regardless of the framing origin.</p>
+    <p>Or allow only same-origin framing (e.g. for embeds within your own site):</p>
+    <div class="header-block">X-Frame-Options: SAMEORIGIN</div>
+
+    <p><strong>Option 2 — CSP <code>frame-ancestors</code></strong> (modern, more flexible):</p>
+    <div class="header-block">Content-Security-Policy: frame-ancestors 'none';</div>
+    <p>Equivalent to <code>DENY</code> but part of CSP so it overrides <code>X-Frame-Options</code> in modern browsers. Use <code>'self'</code> instead of <code>'none'</code> to allow same-origin framing.</p>
+    <p>You can also whitelist specific origins:</p>
+    <div class="header-block">Content-Security-Policy: frame-ancestors 'self' https://trusted-partner.example;</div>
+
+    <p>In Nginx — add both for maximum browser coverage:</p>
+    <pre>add_header X-Frame-Options "DENY" always;
+add_header Content-Security-Policy "frame-ancestors 'none';" always;</pre>
+  </div>
+
+</main>
+<footer>Educational demo — do not use in production.</footer>
+
+<script>
+let revealed = false;
+function toggleView() {
+  revealed = !revealed;
+  document.getElementById('victimFrame').style.opacity = revealed ? '1' : '0.07';
+  document.getElementById('evilOverlay').style.background = revealed ? 'rgba(0,0,0,0)' : '';
+}
+function handleClick() {
+  document.getElementById('clickMsg').style.display = 'block';
+}
+</script>
+</body>
+</html>

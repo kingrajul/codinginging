@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Security Headers Demo — Vulnerable Site</title>
+  <style>
+    :root {
+      --red: #e74c3c;
+      --orange: #e67e22;
+      --green: #27ae60;
+      --dark: #1a1a2e;
+      --card: #16213e;
+      --text: #eaeaea;
+      --muted: #8899aa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--dark);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: linear-gradient(135deg, #c0392b, #8e1a0e);
+      padding: 2.5rem 2rem;
+      text-align: center;
+      border-bottom: 3px solid var(--red);
+    }
+    header h1 { font-size: 2.2rem; }
+    header .badge {
+      display: inline-block;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid #ff6b6b;
+      border-radius: 4px;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.8rem;
+      margin-top: 0.6rem;
+      letter-spacing: 1px;
+      color: #ff6b6b;
+    }
+    header p { margin-top: 0.8rem; color: #ffcccc; max-width: 600px; margin-inline: auto; margin-top: 0.8rem; }
+    main { max-width: 900px; margin: 2.5rem auto; padding: 0 1.5rem; }
+    .warning-box {
+      background: rgba(231,76,60,0.12);
+      border: 1px solid var(--red);
+      border-left: 4px solid var(--red);
+      border-radius: 6px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .warning-box h2 { color: var(--red); font-size: 1rem; margin-bottom: 0.5rem; }
+    .warning-box p { font-size: 0.92rem; color: #ffaaaa; }
+    h2.section-title {
+      font-size: 1.4rem;
+      margin-bottom: 1.5rem;
+      color: #aac4ff;
+      border-bottom: 1px solid #2a3a5c;
+      padding-bottom: 0.5rem;
+    }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.2rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid #2a3a5c;
+      border-radius: 10px;
+      padding: 1.5rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: #4a6fa5;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    }
+    .card .icon { font-size: 2rem; }
+    .card h3 { font-size: 1rem; color: #aac4ff; }
+    .card .missing-header {
+      font-size: 0.75rem;
+      font-family: monospace;
+      background: rgba(231,76,60,0.2);
+      color: #ff9999;
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+      display: inline-block;
+    }
+    .card p { font-size: 0.85rem; color: var(--muted); }
+    .card .tag {
+      margin-top: auto;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .tag.high { color: #e74c3c; }
+    .tag.medium { color: #e67e22; }
+    .tag.low { color: #f1c40f; }
+    .how-to {
+      margin-top: 3rem;
+      background: var(--card);
+      border: 1px solid #2a3a5c;
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+    .how-to h2 { color: #aac4ff; margin-bottom: 1rem; }
+    .how-to ol { padding-left: 1.5rem; }
+    .how-to li { margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--muted); }
+    .how-to code {
+      background: #0f1f3a;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      font-size: 0.85rem;
+      color: #82c4f8;
+    }
+    footer {
+      text-align: center;
+      margin: 3rem 0 1.5rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>⚠️ Security Headers Demo</h1>
+  <div class="badge">EDUCATIONAL USE ONLY</div>
+  <p>This site intentionally has <strong>no HTTP security headers</strong>. Each page below demonstrates a specific attack and how the right header prevents it.</p>
+</header>
+
+<main>
+  <div class="warning-box">
+    <h2>🚨 Heads Up</h2>
+    <p>This server is running without <em>any</em> protective HTTP headers. Open DevTools → Network → select any request → inspect the <strong>Response Headers</strong> tab to confirm. Never deploy a configuration like this in production.</p>
+  </div>
+
+  <h2 class="section-title">Missing Headers &amp; Their Exploits</h2>
+
+  <div class="cards">
+    <a class="card" href="csp-xss.html">
+      <div class="icon">💉</div>
+      <h3>Cross-Site Scripting (XSS)</h3>
+      <span class="missing-header">Content-Security-Policy</span>
+      <p>Injected scripts run freely — steal cookies, redirect users, deface the page.</p>
+      <span class="tag high">● HIGH SEVERITY</span>
+    </a>
+
+    <a class="card" href="clickjacking.html">
+      <div class="icon">🖱️</div>
+      <h3>Clickjacking</h3>
+      <span class="missing-header">X-Frame-Options</span>
+      <p>Attackers embed this page in an invisible iframe to trick users into clicking hidden buttons.</p>
+      <span class="tag high">● HIGH SEVERITY</span>
+    </a>
+
+    <a class="card" href="mime-sniffing.html">
+      <div class="icon">🎭</div>
+      <h3>MIME-Type Sniffing</h3>
+      <span class="missing-header">X-Content-Type-Options</span>
+      <p>Browser ignores declared Content-Type and executes files as HTML or JavaScript.</p>
+      <span class="tag medium">● MEDIUM SEVERITY</span>
+    </a>
+
+    <a class="card" href="hsts.html">
+      <div class="icon">🔓</div>
+      <h3>SSL Stripping / Protocol Downgrade</h3>
+      <span class="missing-header">Strict-Transport-Security</span>
+      <p>Without HSTS, attackers on the same network can silently downgrade HTTPS → HTTP.</p>
+      <span class="tag high">● HIGH SEVERITY</span>
+    </a>
+
+    <a class="card" href="referrer-leak.html">
+      <div class="icon">🔗</div>
+      <h3>Referrer Information Leak</h3>
+      <span class="missing-header">Referrer-Policy</span>
+      <p>Full URL (including tokens, search terms, user IDs) is sent to third-party sites.</p>
+      <span class="tag medium">● MEDIUM SEVERITY</span>
+    </a>
+
+    <a class="card" href="permissions-policy.html">
+      <div class="icon">📷</div>
+      <h3>Dangerous Feature Access</h3>
+      <span class="missing-header">Permissions-Policy</span>
+      <p>Scripts or iframes can silently access camera, microphone, and geolocation.</p>
+      <span class="tag medium">● MEDIUM SEVERITY</span>
+    </a>
+  </div>
+
+  <div class="how-to">
+    <h2>🐳 Running This Demo Locally</h2>
+    <ol>
+      <li>Ensure <strong>Docker</strong> and <strong>Docker Compose</strong> are installed.</li>
+      <li>From the project root run: <code>docker compose up -d</code></li>
+      <li>Open <code>http://localhost:8080</code> in your browser.</li>
+      <li>Open <strong>DevTools → Network tab</strong>, click any request, and inspect <strong>Response Headers</strong> — notice the complete absence of security headers.</li>
+      <li>Navigate each demo page to see the attack and the fix side-by-side.</li>
+      <li>To stop: <code>docker compose down</code></li>
+    </ol>
+  </div>
+</main>
+
+<footer>For educational purposes only — do not deploy this configuration in any real environment.</footer>
+</body>
+</html>

